@@ -1,8 +1,8 @@
 """Merge data/listings/*.json into data/all_listings.json and the public site/listings.json.
 
 - Drops shared rooms, already-rented posts, and Facebook posts that fell out of the 30-day window.
-- Collapses cross-posted duplicates: same source, same poster (or same title if no poster),
-  same price, near-identical description. The kept record gets `alsoAt`: [{group, url}].
+- Collapses cross-posted duplicates: same source, same price, near-identical description,
+  and (outside Facebook) same title. The kept record gets `alsoAt`: [{group, url}].
 - Records when each listing was first seen (data/state.json) so the site can mark new ones.
 """
 import json
@@ -47,7 +47,10 @@ def main():
 
     merged = {}
     for x in rows:
-        key = (x["source"], x.get("posterId") or norm(x.get("title")), x.get("price"), norm(x.get("description")) or x["url"])
+        # Facebook cross-posts share text but get different titles from the sorter; other
+        # sources reuse boilerplate text across distinct units, so they also match on title.
+        title = "" if x["source"] == "facebook" else norm(x.get("title"))
+        key = (x["source"], title, x.get("price"), norm(x.get("description")) or norm(x.get("title")) or x["url"])
         if key not in merged:
             merged[key] = {**x, "alsoAt": []}
             continue
