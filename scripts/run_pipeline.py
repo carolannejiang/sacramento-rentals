@@ -42,11 +42,16 @@ def main():
     stamp = ROOT / "data/work/zillow_pulled_at"
     due = "--force-zillow" in sys.argv or not stamp.exists() or time.time() - float(stamp.read_text()) > ZILLOW_EVERY_DAYS * 86400
     if due:
-        if run("Zillow pull", "scripts/fetch_zillow.py", "2000") and run("Zillow normalize", "scripts/normalize_zillow.py"):
+        if run("Zillow pull", "scripts/fetch_zillow.py", "2000"):
             stamp.parent.mkdir(parents=True, exist_ok=True)
             stamp.write_text(str(time.time()))
         else:
             failed.append("zillow")
+    # Detail pages (features, floor plans) only for listings not fetched before, so usually free.
+    if not run("Zillow details", "scripts/fetch_zillow_details.py"):
+        failed.append("zillow details")
+    if not run("Zillow normalize", "scripts/normalize_zillow.py"):
+        failed.append("zillow")
 
     if not run("Merge", "scripts/merge_listings.py"):
         sys.exit(1)

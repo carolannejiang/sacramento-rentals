@@ -11,6 +11,7 @@ const SOURCES = { zillow: "Zillow", craigslist: "Craigslist", facebook: "Faceboo
 const TYPE_LABELS = { apartment: "Apartment", studio: "Studio", house: "House", condo: "Condo", townhouse: "Townhouse", duplex: "Duplex", other: "Other" };
 // Which unitType values each "Home type" filter option covers.
 const TYPE_GROUPS = { apartment: ["apartment", "studio"], house: ["house"], condo: ["condo", "townhouse"], duplex: ["duplex"] };
+const HIGHLIGHT_GROUPS = ["Laundry", "Cooling", "Parking", "In the unit", "Appliances", "Community"];
 const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "postedWithin", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
 
 let listings = [];
@@ -63,7 +64,7 @@ function filtered() {
     if (f.hideHotels && x.weeklyHotel) return false;
     if (f.hideFlagged && x.scamFlags?.length) return false;
     if (f.newOnly && !isNew(x)) return false;
-    if (q && !`${x.title} ${x.neighborhood} ${x.address} ${x.description}`.toLowerCase().includes(q)) return false;
+    if (q && !`${x.title} ${x.neighborhood} ${x.address} ${x.description} ${Object.values(x.features || {}).flat().join(" ")}`.toLowerCase().includes(q)) return false;
     return true;
   });
   const price = (x) => x.price ?? Infinity;
@@ -148,6 +149,7 @@ function card(x) {
     ...(x.sources || [x.source]).map((s) => `<span class="badge src-${s}">${SOURCES[s] || s}${s === x.source && x.group ? " · " + esc(x.group.split(/[|,]/)[0].trim()) : ""}</span>`),
     dogsOk(x) === true && `<span class="badge">Dogs OK</span>`,
     x.moveIn && `<span class="badge">Move-in ${esc(x.moveIn)}</span>`,
+    x.specialOffer && `<span class="badge offer" title="${esc(x.specialOffer)}">🎁 Special offer</span>`,
     x.alsoAt?.length && `<span class="badge">Posted ${x.alsoAt.length + 1}×</span>`,
     ...(x.scamFlags || []).map((f) => `<span class="badge warn">⚠ ${esc(f)}</span>`),
   ].filter(Boolean).join("");
@@ -161,6 +163,15 @@ function card(x) {
           <span class="pcount">1/${n}</span>` : ""}
       </div>`
     : `<div class="photo nophoto">No photo</div>`;
+  // A few key features up front; every feature, grouped, when the card is expanded.
+  const feats = x.features || {};
+  // Short items like "In unit" or "On street" need their group to make sense on their own.
+  const label = (g, t) => (g === "Laundry" && !/laundry|washer|w\/d/i.test(t)) || (g === "Parking" && !/park|garage|carport/i.test(t))
+    ? `${g}: ${t.toLowerCase()}` : t;
+  const highlights = HIGHLIGHT_GROUPS.flatMap((g) => (feats[g] || []).map((t) => label(g, t))).slice(0, 6);
+  const featureList = Object.entries(feats).map(([g, list]) =>
+    `<div><dt>${esc(g)}</dt><dd>${list.map(esc).join(" · ")}</dd></div>`).join("");
+  const hasMore = x.description || featureList || x.specialOffer;
   const copies = (x.alsoAt || []).map((c, i) =>
     `<a href="${esc(c.url)}" target="_blank" rel="noopener">${c.source && c.source !== x.source ? SOURCES[c.source] + " ↗" : `copy ${i + 2}`}</a>`).join(" ");
   return `<li class="card" id="c-${CSS.escape(x.id)}" data-id="${esc(x.id)}">
@@ -172,13 +183,18 @@ function card(x) {
       ${where ? `<p class="where">${esc(where)}</p>` : ""}
       <p class="drive">${drives ? "🚗 " + drives : "🚗 Location not listed"}</p>
       <div class="badges">${badges}</div>
+      ${highlights.length ? `<div class="highlights">${highlights.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
       ${x.description ? `<p class="desc">${esc(x.description)}</p>` : ""}
+      <div class="details">
+        ${x.specialOffer ? `<p class="offer">🎁 ${esc(x.specialOffer)}</p>` : ""}
+        ${featureList ? `<dl class="features">${featureList}</dl>` : ""}
+      </div>
       <div class="actions">
         <a href="${esc(x.url)}" target="_blank" rel="noopener">${x.sources?.length > 1 ? SOURCES[x.source] : "Open listing"} ↗</a> ${copies}
         <button data-act="fav" class="${fav.has(x.id) ? "on" : ""}">${fav.has(x.id) ? "★ Saved" : "☆ Save"}</button>
         <button data-act="messaged" class="${messaged.has(x.id) ? "on" : ""}">${messaged.has(x.id) ? "✓ Messaged" : "✉ Mark messaged"}</button>
         <button data-act="hide">${hidden.has(x.id) ? "Unhide" : "Hide"}</button>
-        ${x.description ? `<button data-act="more">More</button>` : ""}
+        ${hasMore ? `<button data-act="more">Details</button>` : ""}
       </div>
     </div>
   </li>`;

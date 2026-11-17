@@ -11,7 +11,7 @@ workflow refreshes it every 6 hours and publishes `site/` to GitHub Pages and Ve
 |---|---|---|
 | Craigslist | Search API split into price bands + detail pages (`scripts/craigslist/`) | every run |
 | Facebook groups (`sources/facebook_groups.json`) | Apify `apify/facebook-groups-scraper`, then Claude sorts posts (`parse_facebook.py`) | every run, last 8 hours |
-| Zillow (`sources/zillow_searches.json`) | Apify `maxcopell/zillow-scraper` | every 3 days |
+| Zillow (`sources/zillow_searches.json`) | Apify `maxcopell/zillow-scraper`; features from `maxcopell/zillow-detail-scraper` for new listings only | every 3 days |
 
 `merge_listings.py` drops shared rooms and rented posts, collapses cross-posts, and writes
 `site/listings.json` (poster names removed).

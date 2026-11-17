@@ -111,6 +111,34 @@ SCAM_PATTERNS = [
 ]
 
 
+FEATURE_GROUPS = [  # (pattern on the attribute text, group, label or None to keep the text)
+    (r"w/d in unit", "Laundry", "Washer/dryer in unit"), (r"w/d hookups", "Laundry", "Washer/dryer hookups"),
+    (r"no laundry on site", "Laundry", "No laundry on site"), (r"laundry (on site|in bldg)", "Laundry", "Laundry in building"),
+    (r"air conditioning", "Cooling", "Air conditioning"),
+    (r"garage|carport|parking|valet", "Parking", None),
+    (r"cats are ok", "Pets", "Cats OK"), (r"dogs are ok", "Pets", "Dogs OK"),
+    (r"furnished", "In the unit", "Furnished"),
+    (r"no smoking", "Building", "No smoking"), (r"wheelchair accessible", "Building", "Wheelchair accessible"),
+    (r"ev charging", "Building", "EV charging"),
+    (r"application fee details:\s*(.+)", "Lease & fees", "Application fee: {0}"),
+]
+
+
+def features_of(attrs):
+    f = {}
+    for a in attrs:
+        t = re.sub(r"\s+", " ", a["text"]).strip()
+        for pat, group, label in FEATURE_GROUPS:
+            m = re.search(pat, t, re.I)
+            if m:
+                text = label.format(*m.groups()) if label else t[:1].upper() + t[1:]
+                f.setdefault(group, [])
+                if text not in f[group]:
+                    f[group].append(text)
+                break
+    return f
+
+
 def move_in(attrs):
     for a in attrs:
         t = a["text"].lower()
@@ -223,6 +251,7 @@ for r in records:
         "pets": pets,
         "photos": photos,
         "description": desc[:1500] if desc else None,
+        "features": features_of(attrs),
         "scamFlags": [],
         "_rentPeriod": period,
         "_hasDetail": bool(det),
