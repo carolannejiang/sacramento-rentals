@@ -175,6 +175,10 @@ function card(x) {
   const copies = (x.alsoAt || []).map((c, i) =>
     `<a href="${esc(c.url)}" target="_blank" rel="noopener">${c.source && c.source !== x.source ? SOURCES[c.source] + " ↗" : `copy ${i + 2}`}</a>`).join(" ");
   return `<li class="card" id="c-${CSS.escape(x.id)}" data-id="${esc(x.id)}">
+    <div class="corner">
+      <button data-act="fav" class="${fav.has(x.id) ? "on" : ""}" aria-pressed="${fav.has(x.id)}">${fav.has(x.id) ? "★ Saved" : "☆ Save"}</button>
+      <button data-act="messaged" class="${messaged.has(x.id) ? "on" : ""}" aria-pressed="${messaged.has(x.id)}">${messaged.has(x.id) ? "✓ Messaged" : "✉ Messaged"}</button>
+    </div>
     ${photo}
     <div>
       <div class="top"><span class="price">${money(x.price)}</span><span class="specs">${specs}</span><span class="specs" title="${x.postedAt ? "Date the listing was posted" : "The source doesn't give a post date"}">${
@@ -191,8 +195,6 @@ function card(x) {
       </div>
       <div class="actions">
         <a href="${esc(x.url)}" target="_blank" rel="noopener">${x.sources?.length > 1 ? SOURCES[x.source] : "Open listing"} ↗</a> ${copies}
-        <button data-act="fav" class="${fav.has(x.id) ? "on" : ""}">${fav.has(x.id) ? "★ Saved" : "☆ Save"}</button>
-        <button data-act="messaged" class="${messaged.has(x.id) ? "on" : ""}">${messaged.has(x.id) ? "✓ Messaged" : "✉ Mark messaged"}</button>
         <button data-act="hide">${hidden.has(x.id) ? "Unhide" : "Hide"}</button>
         ${hasMore ? `<button data-act="more">Details</button>` : ""}
       </div>
