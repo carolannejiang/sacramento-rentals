@@ -19,6 +19,7 @@ let byId = new Map();
 let view = "all";
 let fav = new Set(store.get("fav", []));
 let hidden = new Set(store.get("hidden", []));
+let messaged = new Set(store.get("messaged", []));
 const lastVisit = store.get("lastVisit", null);
 let map, markers;
 
@@ -45,6 +46,7 @@ function filtered() {
   const q = f.q.trim().toLowerCase();
   let out = listings.filter((x) => {
     if (view === "fav") return fav.has(x.id);
+    if (view === "messaged") return messaged.has(x.id);
     if (view === "hidden") return hidden.has(x.id);
     if (hidden.has(x.id)) return false;
     if (!(x.sources || [x.source]).some((s) => f.sources.includes(s))) return false;
@@ -142,6 +144,7 @@ function card(x) {
   }).filter(Boolean).join(" · ") : "";
   const badges = [
     isNew(x) && `<span class="badge new">New</span>`,
+    messaged.has(x.id) && `<span class="badge messaged">✉ Messaged</span>`,
     ...(x.sources || [x.source]).map((s) => `<span class="badge src-${s}">${SOURCES[s] || s}${s === x.source && x.group ? " · " + esc(x.group.split(/[|,]/)[0].trim()) : ""}</span>`),
     dogsOk(x) === true && `<span class="badge">Dogs OK</span>`,
     x.moveIn && `<span class="badge">Move-in ${esc(x.moveIn)}</span>`,
@@ -173,6 +176,7 @@ function card(x) {
       <div class="actions">
         <a href="${esc(x.url)}" target="_blank" rel="noopener">${x.sources?.length > 1 ? SOURCES[x.source] : "Open listing"} ↗</a> ${copies}
         <button data-act="fav" class="${fav.has(x.id) ? "on" : ""}">${fav.has(x.id) ? "★ Saved" : "☆ Save"}</button>
+        <button data-act="messaged" class="${messaged.has(x.id) ? "on" : ""}">${messaged.has(x.id) ? "✓ Messaged" : "✉ Mark messaged"}</button>
         <button data-act="hide">${hidden.has(x.id) ? "Unhide" : "Hide"}</button>
         ${x.description ? `<button data-act="more">More</button>` : ""}
       </div>
@@ -186,6 +190,7 @@ function render() {
   $("list").innerHTML = rows.slice(0, 400).map(card).join("") + (rows.length > 400 ? `<li class="count">Showing first 400 — narrow the filters to see more.</li>` : "");
   $("favCount").textContent = fav.size ? `(${fav.size})` : "";
   $("hiddenCount").textContent = hidden.size ? `(${hidden.size})` : "";
+  $("messagedCount").textContent = messaged.size ? `(${messaged.size})` : "";
   markers.clearLayers();
   for (const x of rows) {
     if (x.lat == null || x.lon == null) continue;
@@ -266,10 +271,11 @@ $("list").addEventListener("click", (e) => {
     return;
   }
   if (act === "more") { cardEl.classList.toggle("open"); return; }
-  const set = act === "fav" ? fav : hidden;
+  const set = { fav, hidden, messaged }[act];
   set.has(id) ? set.delete(id) : set.add(id);
   store.set("fav", [...fav]);
   store.set("hidden", [...hidden]);
+  store.set("messaged", [...messaged]);
   render();
 });
 
