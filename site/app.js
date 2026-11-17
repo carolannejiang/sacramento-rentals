@@ -215,14 +215,46 @@ function render() {
   $("hiddenCount").textContent = hidden.size ? `(${hidden.size})` : "";
   $("messagedCount").textContent = messaged.size ? `(${messaged.size})` : "";
   markers.clearLayers();
+  markerById.clear();
+  hovered = null;
   for (const x of rows) {
     if (x.lat == null || x.lon == null) continue;
-    L.circleMarker([x.lat, x.lon], { radius: 6, weight: 1, color: "#fff", fillColor: getComputedStyle(document.documentElement).getPropertyValue(`--${x.source}`).trim() || "#1f6f5c", fillOpacity: 0.9 })
+    const m = L.circleMarker([x.lat, x.lon], dotStyle(x.source))
       .bindTooltip(`${money(x.price)} · ${esc(x.title)}`)
       .on("click", () => focusCard(x.id))
       .addTo(markers);
+    m.source = x.source;
+    markerById.set(x.id, m);
   }
 }
+
+// ---- hovering a listing highlights its dot and grays out the rest ----
+const markerById = new Map();
+let hovered = null;
+
+function dotStyle(source) {
+  const color = getComputedStyle(document.documentElement).getPropertyValue(`--${source}`).trim() || "#1f6f5c";
+  return { radius: 6, weight: 1, color: "#fff", fillColor: color, fillOpacity: 0.9 };
+}
+
+function highlight(id) {
+  if (id === hovered) return;
+  hovered = id;
+  const target = id && markerById.get(id);
+  for (const m of markerById.values()) {
+    m.setStyle(!target ? dotStyle(m.source)
+      : m === target ? { radius: 10, weight: 3, color: "#fff", fillColor: "#e8590c", fillOpacity: 1 }
+      : { radius: 5, weight: 0, fillColor: "#9a9a96", fillOpacity: 0.25 });
+  }
+  if (target) {
+    target.bringToFront();
+    if (!map.getBounds().pad(-0.05).contains(target.getLatLng())) map.panTo(target.getLatLng());
+  }
+}
+
+// Gaps between cards keep the last highlight, so it doesn't flicker while moving down the list.
+$("list").addEventListener("mouseover", (e) => { const id = e.target.closest(".card")?.dataset.id; if (id) highlight(id); });
+$("list").addEventListener("mouseleave", () => highlight(null));
 
 function focusCard(id) {
   const el = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
