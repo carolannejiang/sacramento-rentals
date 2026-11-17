@@ -2,7 +2,8 @@
 
 Personal apartment-hunt aggregator. Pulls whole-unit rentals from Craigslist, Zillow and
 Sacramento Facebook housing groups into one filterable page with a map. A GitHub Actions
-workflow refreshes it every 6 hours and publishes `site/` to GitHub Pages.
+workflow refreshes it every 6 hours and publishes `site/` to GitHub Pages and Vercel
+(https://sacramento-rentals.vercel.app).
 
 ## Pipeline (`scripts/run_pipeline.py`)
 
@@ -22,6 +23,8 @@ point when the cache is empty.
 
 - `APIFY_TOKEN`
 - `ANTHROPIC_API_KEY`
+- `VERCEL_TOKEN` (optional; the Vercel step is skipped without it). Repo variables
+  `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` point at the Vercel project.
 
 ## Run locally
 
