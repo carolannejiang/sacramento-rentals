@@ -1,0 +1,54 @@
+"""Refresh every source and rebuild the site data. Run on a schedule by .github/workflows/update.yml.
+
+A failed step is reported and skipped; the previous data for that source is kept.
+Usage: python scripts/run_pipeline.py [--force-zillow]
+"""
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+PY = sys.executable
+ZILLOW_EVERY_DAYS = 3  # a full Zillow pull costs ~$0.70 on Apify
+FACEBOOK_WINDOW = "8 hours"  # the schedule runs every 6 hours; the overlap catches late posts
+CL_SEARCH, CL_DETAILS = "data/raw/craigslist_search", "data/raw/craigslist_details"
+
+
+def run(name, *args):
+    print(f"\n== {name}", flush=True)
+    ok = subprocess.run([PY, *args], cwd=ROOT).returncode == 0
+    if not ok:
+        print(f"!! {name} failed; keeping previous data", flush=True)
+    return ok
+
+
+def main():
+    failed = []
+    if not (run("Craigslist search", "-I", "scripts/craigslist/fetch_search.py", CL_SEARCH)
+            and run("Craigslist details", "-I", "scripts/craigslist/fetch_details.py", CL_SEARCH, CL_DETAILS, "300")
+            and run("Craigslist normalize", "-I", "scripts/craigslist/normalize.py", CL_SEARCH, CL_DETAILS,
+                    "data/raw/craigslist.json", "data/listings/craigslist.json")):
+        failed.append("craigslist")
+
+    window = FACEBOOK_WINDOW if (ROOT / "data/raw/facebook.json").exists() else "30 days"
+    if not (run("Facebook pull", "scripts/fetch_facebook.py", window)
+            and run("Facebook sort", "scripts/parse_facebook.py")):
+        failed.append("facebook")
+
+    stamp = ROOT / "data/work/zillow_pulled_at"
+    due = "--force-zillow" in sys.argv or not stamp.exists() or time.time() - float(stamp.read_text()) > ZILLOW_EVERY_DAYS * 86400
+    if due:
+        if run("Zillow pull", "scripts/fetch_zillow.py", "2000") and run("Zillow normalize", "scripts/normalize_zillow.py"):
+            stamp.parent.mkdir(parents=True, exist_ok=True)
+            stamp.write_text(str(time.time()))
+        else:
+            failed.append("zillow")
+
+    if not run("Merge", "scripts/merge_listings.py"):
+        sys.exit(1)
+    print("\nFailed sources:", ", ".join(failed) if failed else "none")
+
+
+if __name__ == "__main__":
+    main()

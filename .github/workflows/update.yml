@@ -1,0 +1,71 @@
+name: Update listings
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"  # every 6 hours (UTC)
+  workflow_dispatch:
+    inputs:
+      force_zillow:
+        description: "Pull Zillow even if it ran in the last 3 days"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update-listings
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # Working data (raw pulls, Craigslist page cache, sorted Facebook posts) lives in the
+      # Actions cache, not the repo, so poster names never land in public git history.
+      - name: Restore data
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: data-${{ github.run_id }}
+          restore-keys: data-
+
+      - name: Start from seed when the cache is empty
+        if: steps.restore.outputs.cache-matched-key == ''
+        run: cp -R seed/data .
+
+      - name: Run pipeline
+        env:
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/run_pipeline.py ${{ inputs.force_zillow && '--force-zillow' || '' }}
+
+      - name: Save data
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: data-${{ github.run_id }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
