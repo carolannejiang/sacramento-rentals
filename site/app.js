@@ -144,8 +144,8 @@ function card(x) {
   const drives = x.commute ? destinations.map((d) => {
     const c = x.commute[d.id];
     if (!c) return "";
-    return c.straightLine ? `≈${c.mi} mi to ${esc(d.label)}` : `<b>${c.min} min</b> (${c.mi} mi) to ${esc(d.label)}`;
-  }).filter(Boolean).join(" · ") : "";
+    return "🚗 " + (c.straightLine ? `≈${c.mi} mi to ${esc(d.label)}` : `<b>${c.min} min</b> (${c.mi} mi) to ${esc(d.label)}`);
+  }).filter(Boolean).join("<br>") : "";
   const badges = [
     isNew(x) && `<span class="badge new">New</span>`,
     messaged.has(x.id) && `<span class="badge messaged">✉ Messaged</span>`,
@@ -190,7 +190,7 @@ function card(x) {
         x.postedAt ? "posted " + day(x.postedAt) : postedDate(x) ? "first seen " + day(x.firstSeen) : "post date not listed"}</span></div>
       <p class="title">${esc(x.title)}</p>
       ${where ? `<p class="where">${esc(where)}</p>` : ""}
-      <p class="drive">${drives ? "🚗 " + drives : "🚗 Location not listed"}</p>
+      <p class="drive">${drives || "🚗 Location not listed"}</p>
       <div class="badges">${badges}</div>
       ${highlights.length ? `<div class="highlights">${highlights.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
       ${x.description ? `<p class="desc">${esc(x.description)}</p>` : ""}
