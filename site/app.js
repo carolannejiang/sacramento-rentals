@@ -148,7 +148,7 @@ function card(x) {
   }).filter(Boolean).join("<br>") : "";
   const badges = [
     isNew(x) && `<span class="badge new">New</span>`,
-    messaged.has(x.id) && `<span class="badge messaged">✉ Messaged</span>`,
+    messaged.has(x.id) && `<span class="badge messaged">✉ Contacted</span>`,
     ...(x.sources || [x.source]).map((s) => `<span class="badge src-${s}">${SOURCES[s] || s}${s === x.source && x.group ? " · " + esc(x.group.split(/[|,]/)[0].trim()) : ""}</span>`),
     x.listedBy === "individual" && `<span class="badge lister" title="${esc(x.listerName || "Posted by an owner or tenant")}">👤 Individual</span>`,
     x.listedBy === "company" && `<span class="badge lister">🏢 ${esc(x.listerName || "Property manager")}</span>`,
@@ -182,7 +182,7 @@ function card(x) {
   return `<li class="card" id="c-${CSS.escape(x.id)}" data-id="${esc(x.id)}">
     <div class="corner">
       <button data-act="fav" class="star ${fav.has(x.id) ? "on" : ""}" aria-pressed="${fav.has(x.id)}" aria-label="Save" title="${fav.has(x.id) ? "Saved" : "Save"}">${fav.has(x.id) ? "★" : "☆"}</button>
-      <button data-act="messaged" class="${messaged.has(x.id) ? "on" : ""}" aria-pressed="${messaged.has(x.id)}">${messaged.has(x.id) ? "✓ Messaged" : "✉ Messaged"}</button>
+      <button data-act="messaged" class="${messaged.has(x.id) ? "on" : ""}" aria-pressed="${messaged.has(x.id)}">${messaged.has(x.id) ? "✓ Contacted" : "✉ Contacted"}</button>
     </div>
     ${photo}
     <div>
