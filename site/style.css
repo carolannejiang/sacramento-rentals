@@ -108,6 +108,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .details { display: none; }
 .card.open .details { display: block; }
 .offer { font-size: 13px; margin: 6px 0; }
+.repeats { font-size: 13px; color: var(--muted); margin: 6px 0; }
+.repeats a { color: var(--accent); margin-right: 4px; }
 .features { margin: 6px 0; display: grid; gap: 4px; font-size: 13px; }
 .features div { display: grid; grid-template-columns: 120px 1fr; gap: 8px; }
 .features dt { color: var(--muted); }

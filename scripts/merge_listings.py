@@ -53,12 +53,24 @@ def meters(a, b):
     return math.hypot(dlat, dlon)
 
 
-def same_unit(a, b):
-    if a["source"] == b["source"]:
+def repost(a, b, ka, kb):
+    """Same platform, same unit posted again under a new title (often with a price drop)."""
+    if not (ka and kb and ka == kb and a.get("beds") is not None and a.get("beds") == b.get("beds")):
         return False
+    # Exact match, not "same or missing": a post without sqft would otherwise chain together
+    # every floor plan in a big building.
+    if a.get("baths") != b.get("baths") or a.get("sqft") != b.get("sqft"):
+        return False
+    same_text = norm(a.get("description"))[:100] == norm(b.get("description"))[:100] != ""
+    return same_text or close_price(a.get("price"), b.get("price"), 0.15)
+
+
+def same_unit(a, b):
+    ka, kb = address_key(a.get("address")), address_key(b.get("address"))
+    if a["source"] == b["source"]:
+        return repost(a, b, ka, kb)
     if a.get("beds") is not None and b.get("beds") is not None and a["beds"] != b["beds"]:
         return False
-    ka, kb = address_key(a.get("address")), address_key(b.get("address"))
     if ka and kb and ka[:2] == kb[:2] and (ka[2] is None or kb[2] is None or ka[2] == kb[2]):
         return close_price(a.get("price"), b.get("price"), 0.10)
     # No usable address on one side: need the same spot on the map, same beds, near-identical rent.
@@ -86,8 +98,16 @@ def merge_across_sources(listings):
         groups.setdefault(find(i), []).append(x)
     out = []
     for members in groups.values():
-        members.sort(key=lambda x: (SOURCE_RANK.get(x["source"], 9), -richness(x)))
-        primary = {**members[0], "alsoAt": list(members[0]["alsoAt"])}
+        # Show the newest post from the best source (reposts often drop the price), but keep the id
+        # of the first one seen so saved/hidden/contacted marks survive a repost.
+        members.sort(key=lambda x: (SOURCE_RANK.get(x["source"], 9), x.get("postedAt") or x["firstSeen"]), reverse=False)
+        best_rank = SOURCE_RANK.get(members[0]["source"], 9)
+        newest = max((m for m in members if SOURCE_RANK.get(m["source"], 9) == best_rank),
+                     key=lambda x: (x.get("postedAt") or x["firstSeen"], richness(x)))
+        members.remove(newest)
+        members.insert(0, newest)
+        oldest = min(members, key=lambda x: (x["firstSeen"], x["id"]))
+        primary = {**members[0], "alsoAt": list(members[0]["alsoAt"]), "id": oldest["id"]}
         for other in members[1:]:
             primary["alsoAt"].append({"source": other["source"], "group": other.get("group"), "url": other["url"]})
             primary["alsoAt"] += other["alsoAt"]
@@ -100,6 +120,7 @@ def merge_across_sources(listings):
             primary["scamFlags"] = sorted(set(primary.get("scamFlags") or []) | set(other.get("scamFlags") or []))
             primary["firstSeen"] = min(primary["firstSeen"], other["firstSeen"])
         primary["sources"] = sorted({m["source"] for m in members}, key=lambda s: SOURCE_RANK.get(s, 9))
+        primary["reposts"] = sum(1 for m in members if m["source"] == primary["source"]) - 1
         out.append(primary)
     return out
 
@@ -163,7 +184,7 @@ def main():
 
     geocode_missing(list(merged.values()))
     combined = merge_across_sources(list(merged.values()))
-    print(f"Matched {len(merged) - len(combined)} listings to the same unit on another platform")
+    print(f"Folded {len(merged) - len(combined)} reposts and cross-platform copies into the same unit")
     destinations = add_commutes(combined)
     out = sorted(combined, key=lambda x: x.get("postedAt") or x["firstSeen"], reverse=True)
     (ROOT / "data/all_listings.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))

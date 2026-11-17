@@ -176,9 +176,14 @@ function card(x) {
   const highlights = HIGHLIGHT_GROUPS.flatMap((g) => (feats[g] || []).map((t) => label(g, t))).slice(0, 6);
   const featureList = Object.entries(feats).map(([g, list]) =>
     `<div><dt>${esc(g)}</dt><dd>${list.map(esc).join(" · ")}</dd></div>`).join("");
-  const hasMore = x.description || featureList || x.specialOffer;
-  const copies = (x.alsoAt || []).map((c, i) =>
-    `<a href="${esc(c.url)}" target="_blank" rel="noopener">${c.source && c.source !== x.source ? SOURCES[c.source] + " ↗" : `copy ${i + 2}`}</a>`).join(" ");
+  const hasMore = x.description || featureList || x.specialOffer || x.alsoAt?.length;
+  // Other platforms get a link in the action row; repeat posts on the same platform are listed under Details.
+  const otherSources = [...new Map((x.alsoAt || []).filter((c) => c.source && c.source !== x.source).map((c) => [c.source, c])).values()];
+  const copies = otherSources.map((c) => `<a href="${esc(c.url)}" target="_blank" rel="noopener">${SOURCES[c.source]} ↗</a>`).join(" ");
+  const repeats = (x.alsoAt || []).filter((c) => !c.source || c.source === x.source);
+  const repeatList = repeats.length
+    ? `<p class="repeats">Also posted ${repeats.length} other time${repeats.length > 1 ? "s" : ""}: ${repeats.map((c, i) =>
+        `<a href="${esc(c.url)}" target="_blank" rel="noopener">${i + 1}</a>`).join(" ")}</p>` : "";
   return `<li class="card" id="c-${CSS.escape(x.id)}" data-id="${esc(x.id)}">
     <div class="corner">
       <button data-act="fav" class="star ${fav.has(x.id) ? "on" : ""}" aria-pressed="${fav.has(x.id)}" aria-label="Save" title="${fav.has(x.id) ? "Saved" : "Save"}">${fav.has(x.id) ? "★" : "☆"}</button>
@@ -197,6 +202,7 @@ function card(x) {
       <div class="details">
         ${x.specialOffer ? `<p class="offer">🎁 ${esc(x.specialOffer)}</p>` : ""}
         ${featureList ? `<dl class="features">${featureList}</dl>` : ""}
+        ${repeatList}
       </div>
       <div class="actions">
         <a href="${esc(x.url)}" target="_blank" rel="noopener">${x.sources?.length > 1 ? SOURCES[x.source] : "Open listing"} ↗</a> ${copies}
