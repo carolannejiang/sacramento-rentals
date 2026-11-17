@@ -8,7 +8,10 @@ const store = {
 };
 
 const SOURCES = { zillow: "Zillow", craigslist: "Craigslist", facebook: "Facebook" };
-const FILTER_IDS = ["maxPrice", "minBeds", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
+const TYPE_LABELS = { apartment: "Apartment", studio: "Studio", house: "House", condo: "Condo", townhouse: "Townhouse", duplex: "Duplex", other: "Other" };
+// Which unitType values each "Home type" filter option covers.
+const TYPE_GROUPS = { apartment: ["apartment", "studio"], house: ["house"], condo: ["condo", "townhouse"], duplex: ["duplex"] };
+const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
 
 let listings = [];
 let view = "all";
@@ -37,6 +40,8 @@ function filtered() {
     if (!(x.sources || [x.source]).some((s) => f.sources.includes(s))) return false;
     if (x.price == null ? !f.noPrice : x.price > f.maxPrice) return false;
     if (f.minBeds > 0 && x.beds != null && x.beds < f.minBeds) return false;
+    if (f.homeType !== "any" && !TYPE_GROUPS[f.homeType].includes(x.unitType)) return false;
+    if (f.minSqft && x.sqft && x.sqft < f.minSqft) return false;
     const d = dogsOk(x);
     if (f.dogs === "yes" && d !== true) return false;
     if (f.dogs === "maybe" && d === false) return false;
@@ -57,6 +62,8 @@ function readFilters() {
   return {
     maxPrice: Number($("maxPrice").value) || Infinity,
     minBeds: Number($("minBeds").value),
+    homeType: $("homeType").value,
+    minSqft: Number($("minSqft").value) || 0,
     dogs: $("dogs").value,
     sort: $("sort").value,
     q: $("q").value,
@@ -97,7 +104,12 @@ function money(n) { return n == null ? "Price not listed" : "$" + Math.round(n).
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 function card(x) {
-  const specs = [x.beds != null && (x.beds === 0 ? "Studio" : `${x.beds} bd`), x.baths != null && `${x.baths} ba`, x.sqft && `${Math.round(x.sqft)} sqft`].filter(Boolean).join(" · ");
+  const specs = [
+    x.unitType !== "studio" && x.unitType !== "other" && TYPE_LABELS[x.unitType],
+    x.beds != null && (x.beds === 0 ? "Studio" : `${x.beds} bd`),
+    x.baths != null && `${x.baths} ba`,
+    x.sqft ? `${Math.round(x.sqft).toLocaleString()} sqft` : "sqft not listed",
+  ].filter(Boolean).join(" · ");
   const where = [x.neighborhood, x.address].filter(Boolean).join(" — ");
   const badges = [
     isNew(x) && `<span class="badge new">New</span>`,

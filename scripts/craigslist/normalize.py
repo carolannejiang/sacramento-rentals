@@ -98,7 +98,7 @@ json.dump({"fetchedAt": datetime.now(timezone.utc).isoformat(timespec="seconds")
 # ---- normalize ----
 HOUSING = {"apartment": "apartment", "flat": "apartment", "loft": "apartment", "in-law": "apartment",
            "house": "house", "cottage/cabin": "house", "condo": "condo", "townhouse": "townhouse",
-           "duplex": "other", "manufactured": "other", "assisted living": "other", "land": "other"}
+           "duplex": "duplex", "manufactured": "other", "assisted living": "other", "land": "other"}
 MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
 SCAM_PATTERNS = [
     (r"western union|moneygram|wire (the |a )?(money|deposit|transfer)|wire transfer", "wire transfer requested"),
