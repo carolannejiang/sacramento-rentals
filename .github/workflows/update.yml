@@ -9,6 +9,10 @@ on:
         description: "Pull Zillow even if it ran in the last 3 days"
         type: boolean
         default: false
+      craigslist_detail_limit:
+        description: "Max new Craigslist detail pages to fetch (about 1 per second)"
+        type: string
+        default: "300"
 
 permissions:
   contents: read
@@ -54,6 +58,7 @@ jobs:
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CL_DETAIL_LIMIT: ${{ inputs.craigslist_detail_limit }}
         run: python scripts/run_pipeline.py ${{ inputs.force_zillow && '--force-zillow' || '' }}
 
       - name: Save data

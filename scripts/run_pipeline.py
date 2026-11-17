@@ -2,7 +2,9 @@
 
 A failed step is reported and skipped; the previous data for that source is kept.
 Usage: python scripts/run_pipeline.py [--force-zillow]
+Env: CL_DETAIL_LIMIT caps new Craigslist detail pages fetched per run (default 300, ~1 per second).
 """
+import os
 import subprocess
 import sys
 import time
@@ -26,7 +28,8 @@ def run(name, *args):
 def main():
     failed = []
     if not (run("Craigslist search", "-I", "scripts/craigslist/fetch_search.py", CL_SEARCH)
-            and run("Craigslist details", "-I", "scripts/craigslist/fetch_details.py", CL_SEARCH, CL_DETAILS, "300")
+            and run("Craigslist details", "-I", "scripts/craigslist/fetch_details.py", CL_SEARCH, CL_DETAILS,
+                   os.environ.get("CL_DETAIL_LIMIT") or "300")
             and run("Craigslist normalize", "-I", "scripts/craigslist/normalize.py", CL_SEARCH, CL_DETAILS,
                     "data/raw/craigslist.json", "data/listings/craigslist.json")):
         failed.append("craigslist")
