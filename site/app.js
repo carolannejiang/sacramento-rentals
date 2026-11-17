@@ -11,9 +11,10 @@ const SOURCES = { zillow: "Zillow", craigslist: "Craigslist", facebook: "Faceboo
 const TYPE_LABELS = { apartment: "Apartment", studio: "Studio", house: "House", condo: "Condo", townhouse: "Townhouse", duplex: "Duplex", other: "Other" };
 // Which unitType values each "Home type" filter option covers.
 const TYPE_GROUPS = { apartment: ["apartment", "studio"], house: ["house"], condo: ["condo", "townhouse"], duplex: ["duplex"] };
-const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
+const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "postedWithin", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
 
 let listings = [];
+let destinations = [];
 let byId = new Map();
 let view = "all";
 let fav = new Set(store.get("fav", []));
@@ -31,6 +32,14 @@ function dogsOk(x) {
 
 function isNew(x) { return lastVisit && x.firstSeen > lastVisit; }
 
+// Best known post date. Some Zillow buildings have none; for those, "first seen" only means
+// something for listings that appeared after the site's first import.
+let importCutoff = "";
+function postedDate(x) {
+  if (x.postedAt) return x.postedAt;
+  return x.firstSeen > importCutoff ? x.firstSeen : null;
+}
+
 function filtered() {
   const f = readFilters();
   const q = f.q.trim().toLowerCase();
@@ -43,6 +52,9 @@ function filtered() {
     if (f.minBeds > 0 && x.beds != null && x.beds < f.minBeds) return false;
     if (f.homeType !== "any" && !TYPE_GROUPS[f.homeType].includes(x.unitType)) return false;
     if (f.minSqft && x.sqft && x.sqft < f.minSqft) return false;
+    if (f.postedWithin && (!postedDate(x) || Date.now() - new Date(postedDate(x)) > f.postedWithin * 864e5)) return false;
+    // Listings without a known location stay visible, like unknown sqft.
+    for (const [id, max] of Object.entries(f.maxDrive)) if (max && x.commute?.[id]?.min > max) return false;
     const d = dogsOk(x);
     if (f.dogs === "yes" && d !== true) return false;
     if (f.dogs === "maybe" && d === false) return false;
@@ -53,9 +65,13 @@ function filtered() {
     return true;
   });
   const price = (x) => x.price ?? Infinity;
-  if (f.sort === "priceAsc") out.sort((a, b) => price(a) - price(b));
+  if (f.sort.startsWith("drive_")) {
+    const id = f.sort.slice(6);
+    const t = (x) => x.commute?.[id]?.min ?? Infinity;
+    out.sort((a, b) => t(a) - t(b));
+  } else if (f.sort === "priceAsc") out.sort((a, b) => price(a) - price(b));
   else if (f.sort === "priceDesc") out.sort((a, b) => (b.price ?? -1) - (a.price ?? -1));
-  else out.sort((a, b) => (b.postedAt || b.firstSeen).localeCompare(a.postedAt || a.firstSeen));
+  else out.sort((a, b) => (postedDate(b) || "").localeCompare(postedDate(a) || ""));
   return out;
 }
 
@@ -65,6 +81,8 @@ function readFilters() {
     minBeds: Number($("minBeds").value),
     homeType: $("homeType").value,
     minSqft: Number($("minSqft").value) || 0,
+    postedWithin: Number($("postedWithin").value),
+    maxDrive: Object.fromEntries(destinations.map((d) => [d.id, Number($(`drive_${d.id}`)?.value) || 0])),
     dogs: $("dogs").value,
     sort: $("sort").value,
     q: $("q").value,
@@ -87,8 +105,8 @@ function restoreFilters() {
   const f = store.get("filters", null);
   if (!f) return;
   for (const id of FILTER_IDS) {
-    if (!(id in f)) continue;
     const el = $(id);
+    if (!(id in f) || !el) continue;
     if (el.type === "checkbox") el.checked = f[id]; else el.value = f[id];
   }
   document.querySelectorAll("#sources input").forEach((i) => { i.checked = !f.sources || f.sources.includes(i.value); });
@@ -98,6 +116,11 @@ function ago(iso) {
   if (!iso) return "";
   const days = Math.floor((Date.now() - new Date(iso)) / 864e5);
   return days <= 0 ? "today" : days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
+function day(iso) {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} (${ago(iso)})`;
 }
 
 function money(n) { return n == null ? "Price not listed" : "$" + Math.round(n).toLocaleString() + "/mo"; }
@@ -112,6 +135,11 @@ function card(x) {
     x.sqft ? `${Math.round(x.sqft).toLocaleString()} sqft` : "sqft not listed",
   ].filter(Boolean).join(" · ");
   const where = [x.neighborhood, x.address].filter(Boolean).join(" — ");
+  const drives = x.commute ? destinations.map((d) => {
+    const c = x.commute[d.id];
+    if (!c) return "";
+    return c.straightLine ? `≈${c.mi} mi to ${esc(d.label)}` : `<b>${c.min} min</b> (${c.mi} mi) to ${esc(d.label)}`;
+  }).filter(Boolean).join(" · ") : "";
   const badges = [
     isNew(x) && `<span class="badge new">New</span>`,
     ...(x.sources || [x.source]).map((s) => `<span class="badge src-${s}">${SOURCES[s] || s}${s === x.source && x.group ? " · " + esc(x.group.split(/[|,]/)[0].trim()) : ""}</span>`),
@@ -135,9 +163,11 @@ function card(x) {
   return `<li class="card" id="c-${CSS.escape(x.id)}" data-id="${esc(x.id)}">
     ${photo}
     <div>
-      <div class="top"><span class="price">${money(x.price)}</span><span class="specs">${specs}</span><span class="specs">${x.postedAt ? "posted " + ago(x.postedAt) : "first seen " + ago(x.firstSeen)}</span></div>
+      <div class="top"><span class="price">${money(x.price)}</span><span class="specs">${specs}</span><span class="specs" title="${x.postedAt ? "Date the listing was posted" : "The source doesn't give a post date"}">${
+        x.postedAt ? "posted " + day(x.postedAt) : postedDate(x) ? "first seen " + day(x.firstSeen) : "post date not listed"}</span></div>
       <p class="title">${esc(x.title)}</p>
       ${where ? `<p class="where">${esc(where)}</p>` : ""}
+      <p class="drive">${drives ? "🚗 " + drives : "🚗 Location not listed"}</p>
       <div class="badges">${badges}</div>
       ${x.description ? `<p class="desc">${esc(x.description)}</p>` : ""}
       <div class="actions">
@@ -253,9 +283,6 @@ async function init() {
   for (const [key, label] of Object.entries(SOURCES)) {
     $("sources").insertAdjacentHTML("beforeend", `<label><input type="checkbox" value="${key}" checked> ${label}</label>`);
   }
-  restoreFilters();
-  document.querySelector(".filters").addEventListener("input", () => { saveFilters(); render(); });
-
   map = L.map("map", { scrollWheelZoom: true }).setView([38.5816, -121.4944], 11);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(map);
   markers = L.layerGroup().addTo(map);
@@ -263,6 +290,22 @@ async function init() {
   const data = await fetch("listings.json", { cache: "no-store" }).then((r) => r.json());
   listings = data.listings;
   byId = new Map(listings.map((x) => [x.id, x]));
+  const firstImport = listings.reduce((m, x) => (x.firstSeen < m ? x.firstSeen : m), "9999");
+  importCutoff = new Date(new Date(firstImport).getTime() + 864e5).toISOString();
+
+  // One "max drive" filter, sort option and map pin per destination in the data.
+  destinations = data.destinations || [];
+  for (const d of destinations) {
+    $("driveFilters").insertAdjacentHTML("beforeend",
+      `<label>Max drive to ${esc(d.label)} <input id="drive_${d.id}" type="number" step="5" min="0" placeholder="min"></label>`);
+    $("sort").insertAdjacentHTML("beforeend", `<option value="drive_${d.id}">Closest to ${esc(d.label)}</option>`);
+    FILTER_IDS.push(`drive_${d.id}`);
+    L.marker([d.lat, d.lon], { title: d.name, zIndexOffset: 1000 })
+      .bindTooltip(`★ ${esc(d.label)}`, { permanent: true, direction: "top", offset: [-15, -12] })
+      .addTo(map);
+  }
+  restoreFilters();
+  document.querySelector(".filters").addEventListener("input", () => { saveFilters(); render(); });
   const updated = new Date(data.updatedAt);
   const newCount = listings.filter(isNew).length;
   $("meta").textContent = `${listings.length} listings · updated ${updated.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` +

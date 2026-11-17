@@ -4,12 +4,15 @@
 - Collapses cross-posted duplicates: same source, same price, near-identical description,
   and (outside Facebook) same title. The kept record gets `alsoAt`: [{group, url}].
 - Records when each listing was first seen (data/state.json) so the site can mark new ones.
+- Adds map positions from addresses and drive times to sources/destinations.json (commute.py).
 """
 import json
 import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+
+from commute import add_commutes, geocode_missing
 
 ROOT = Path(__file__).resolve().parent.parent
 PRIVATE_FIELDS = ("poster", "posterId")
@@ -148,13 +151,15 @@ def main():
         x["weeklyHotel"] = bool(re.search(r"\bweekly\b|extended stay", x.get("title") or "", re.I))
     state_path.write_text(json.dumps(first_seen))
 
+    geocode_missing(list(merged.values()))
     combined = merge_across_sources(list(merged.values()))
     print(f"Matched {len(merged) - len(combined)} listings to the same unit on another platform")
+    destinations = add_commutes(combined)
     out = sorted(combined, key=lambda x: x.get("postedAt") or x["firstSeen"], reverse=True)
     (ROOT / "data/all_listings.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))
     public = [{k: v for k, v in x.items() if k not in PRIVATE_FIELDS} for x in out]
     (ROOT / "site").mkdir(exist_ok=True)
-    (ROOT / "site/listings.json").write_text(json.dumps({"updatedAt": now, "listings": public}, ensure_ascii=False))
+    (ROOT / "site/listings.json").write_text(json.dumps({"updatedAt": now, "destinations": destinations, "listings": public}, ensure_ascii=False))
 
     by_source = {}
     for x in out:

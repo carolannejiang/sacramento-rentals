@@ -65,6 +65,11 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); ga
 .specs { color: var(--muted); font-size: 13px; }
 .title { margin: 2px 0; font-weight: 600; }
 .where { color: var(--muted); font-size: 13px; margin: 0; }
+.drive { font-size: 13px; margin: 3px 0 0; }
+.drive b { font-weight: 600; }
+.drive-filters { display: contents; }
+.drive-filters input { width: 110px; }
+.leaflet-tooltip { font-weight: 600; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
 .badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
 .badge.src-facebook { background: color-mix(in srgb, var(--facebook) 15%, transparent); color: var(--facebook); }
