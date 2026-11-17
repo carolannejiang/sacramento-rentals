@@ -91,7 +91,8 @@ def merge_across_sources(listings):
         for other in members[1:]:
             primary["alsoAt"].append({"source": other["source"], "group": other.get("group"), "url": other["url"]})
             primary["alsoAt"] += other["alsoAt"]
-            for field in ("address", "lat", "lon", "baths", "sqft", "pets", "moveIn", "description", "neighborhood"):
+            for field in ("address", "lat", "lon", "baths", "sqft", "pets", "moveIn", "description", "neighborhood",
+                          "listedBy", "listerName"):
                 if primary.get(field) in (None, "") and other.get(field) not in (None, ""):
                     primary[field] = other[field]
             if not primary.get("photos"):
@@ -119,6 +120,15 @@ def main():
     for x in rows:
         if x["source"] == "facebook":
             x["photos"] = photos.get(str(x["sourceId"])) or x.get("photos") or []
+
+    # Who posted Craigslist/Facebook listings (classify_lister.py); Zillow sets this itself.
+    lister_path = ROOT / "data/work/lister_cache.json"
+    listers = json.loads(lister_path.read_text()) if lister_path.exists() else {}
+    for x in rows:
+        hit = listers.get(f"{x['source']}:{x['sourceId']}")
+        if hit:
+            x["listedBy"] = hit["listedBy"] if hit["listedBy"] != "unknown" else None
+            x["listerName"] = hit.get("company")
 
     # The user only wants whole units, never a room in a shared place.
     shared = [x for x in rows if x.get("unitType") == "room" or x.get("sharedSpace") is True]

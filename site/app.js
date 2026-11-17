@@ -12,7 +12,7 @@ const TYPE_LABELS = { apartment: "Apartment", studio: "Studio", house: "House", 
 // Which unitType values each "Home type" filter option covers.
 const TYPE_GROUPS = { apartment: ["apartment", "studio"], house: ["house"], condo: ["condo", "townhouse"], duplex: ["duplex"] };
 const HIGHLIGHT_GROUPS = ["Laundry", "Cooling", "Parking", "In the unit", "Appliances", "Community"];
-const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "postedWithin", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
+const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "listedBy", "postedWithin", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
 
 let listings = [];
 let destinations = [];
@@ -54,6 +54,8 @@ function filtered() {
     if (x.price == null ? !f.noPrice : x.price > f.maxPrice) return false;
     if (f.minBeds > 0 && x.beds != null && x.beds < f.minBeds) return false;
     if (f.homeType !== "any" && !TYPE_GROUPS[f.homeType].includes(x.unitType)) return false;
+    // Unknown posters are left out of both choices: only show what's actually known.
+    if (f.listedBy !== "any" && x.listedBy !== f.listedBy) return false;
     if (f.minSqft && x.sqft && x.sqft < f.minSqft) return false;
     if (f.postedWithin && (!postedDate(x) || Date.now() - new Date(postedDate(x)) > f.postedWithin * 864e5)) return false;
     // Listings without a known location stay visible, like unknown sqft.
@@ -83,6 +85,7 @@ function readFilters() {
     maxPrice: Number($("maxPrice").value) || Infinity,
     minBeds: Number($("minBeds").value),
     homeType: $("homeType").value,
+    listedBy: $("listedBy").value,
     minSqft: Number($("minSqft").value) || 0,
     postedWithin: Number($("postedWithin").value),
     maxDrive: Object.fromEntries(destinations.map((d) => [d.id, Number($(`drive_${d.id}`)?.value) || 0])),
@@ -147,6 +150,8 @@ function card(x) {
     isNew(x) && `<span class="badge new">New</span>`,
     messaged.has(x.id) && `<span class="badge messaged">✉ Messaged</span>`,
     ...(x.sources || [x.source]).map((s) => `<span class="badge src-${s}">${SOURCES[s] || s}${s === x.source && x.group ? " · " + esc(x.group.split(/[|,]/)[0].trim()) : ""}</span>`),
+    x.listedBy === "individual" && `<span class="badge lister" title="${esc(x.listerName || "Posted by an owner or tenant")}">👤 Individual</span>`,
+    x.listedBy === "company" && `<span class="badge lister">🏢 ${esc(x.listerName || "Property manager")}</span>`,
     dogsOk(x) === true && `<span class="badge">Dogs OK</span>`,
     x.moveIn && `<span class="badge">Move-in ${esc(x.moveIn)}</span>`,
     x.specialOffer && `<span class="badge offer" title="${esc(x.specialOffer)}">🎁 Special offer</span>`,
@@ -176,7 +181,7 @@ function card(x) {
     `<a href="${esc(c.url)}" target="_blank" rel="noopener">${c.source && c.source !== x.source ? SOURCES[c.source] + " ↗" : `copy ${i + 2}`}</a>`).join(" ");
   return `<li class="card" id="c-${CSS.escape(x.id)}" data-id="${esc(x.id)}">
     <div class="corner">
-      <button data-act="fav" class="${fav.has(x.id) ? "on" : ""}" aria-pressed="${fav.has(x.id)}">${fav.has(x.id) ? "★ Saved" : "☆ Save"}</button>
+      <button data-act="fav" class="star ${fav.has(x.id) ? "on" : ""}" aria-pressed="${fav.has(x.id)}" aria-label="Save" title="${fav.has(x.id) ? "Saved" : "Save"}">${fav.has(x.id) ? "★" : "☆"}</button>
       <button data-act="messaged" class="${messaged.has(x.id) ? "on" : ""}" aria-pressed="${messaged.has(x.id)}">${messaged.has(x.id) ? "✓ Messaged" : "✉ Messaged"}</button>
     </div>
     ${photo}
@@ -289,7 +294,7 @@ $("list").addEventListener("click", (e) => {
     return;
   }
   if (act === "more") { cardEl.classList.toggle("open"); return; }
-  const set = { fav, hidden, messaged }[act];
+  const set = { fav, hide: hidden, messaged }[act];
   set.has(id) ? set.delete(id) : set.add(id);
   store.set("fav", [...fav]);
   store.set("hidden", [...hidden]);

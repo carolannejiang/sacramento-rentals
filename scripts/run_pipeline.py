@@ -53,6 +53,9 @@ def main():
     if not run("Zillow normalize", "scripts/normalize_zillow.py"):
         failed.append("zillow")
 
+    if not run("Who posted (Craigslist/Facebook)", "scripts/classify_lister.py"):
+        failed.append("lister classification")
+
     if not run("Merge", "scripts/merge_listings.py"):
         sys.exit(1)
     print("\nFailed sources:", ", ".join(failed) if failed else "none")

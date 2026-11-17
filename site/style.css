@@ -41,6 +41,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); ga
 .corner { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
 .corner button { font: inherit; font-size: 12px; background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
 .corner button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.corner .star, .corner .star.on { border: 0; background: none; padding: 0 4px; font-size: 20px; line-height: 1; color: var(--muted); }
+.corner .star.on { color: #e3a008; }
+.corner .star:hover { color: #e3a008; }
+.card .top { padding-right: 140px; }
 .card.focus { outline: 2px solid var(--accent); }
 .photo { width: 150px; height: 112px; border-radius: 8px; object-fit: cover; background: var(--line); }
 .nophoto { display: grid; place-items: center; color: var(--muted); font-size: 12px; }
@@ -87,6 +91,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); ga
 .card.open .desc { -webkit-line-clamp: unset; white-space: pre-line; }
 .highlights { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 2px 0 4px; }
 .highlights span { font-size: 12px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); }
+.badge.lister { background: var(--line); color: var(--text); }
 .badge.offer { background: var(--warn-soft); color: var(--warn); }
 .details { display: none; }
 .card.open .details { display: block; }

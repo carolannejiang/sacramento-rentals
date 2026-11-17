@@ -110,6 +110,21 @@ def unit_features(r):
     return f
 
 
+COMPANY_WORDS = re.compile(r"management|mgmt|propert|realty|real estate|group|\binc\b|llc|corp|rentals|homes|investment|"
+                           r"holdings|capital|services|\bDRE\b|residential|leasing|hemlane|doorstead|keyrenter|urbanhomes", re.I)
+
+
+def lister(detail):
+    """('company' | 'individual' | None, name). Apartment-building pages are always run by a company."""
+    if detail.get("buildingAttributes"):
+        return "company", None
+    provider = detail.get("listingProvider") or {}
+    name = (detail.get("broker") or {}).get("name") or provider.get("postingGroupName") or provider.get("agentName")
+    if not name:
+        return None, None
+    return ("company" if COMPANY_WORDS.search(name) else "individual"), name
+
+
 def convert(x, detail):
     units = x.get("units") or []
     # Buildings list one row per floor plan; headline the smallest plan so price and beds match.
@@ -153,6 +168,7 @@ def convert(x, detail):
     reso, building = detail.get("resoFacts") or {}, detail.get("buildingAttributes") or {}
     features = building_features(building) if building else unit_features(reso)
     listing["features"] = {g: v for g, v in features.items() if v}
+    listing["listedBy"], listing["listerName"] = lister(detail)
     offers = [o["description"].split("\n")[0] for o in detail.get("specialOffers") or []
               if o.get("description") and not o["description"].startswith("Total monthly leasing prices")]
     listing["specialOffer"] = offers[0] if offers else None
