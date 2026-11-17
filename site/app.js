@@ -308,6 +308,43 @@ document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("cli
   render();
 }));
 
+// ---- drag the bar between map and list to resize them (remembered in this browser) ----
+function setMapWidth(pct) {
+  pct = Math.min(75, Math.max(20, pct));
+  document.querySelector("main").style.setProperty("--map-width", pct + "%");
+  $("splitter").setAttribute("aria-valuenow", Math.round(pct));
+  map?.invalidateSize();
+  return pct;
+}
+
+function initSplitter() {
+  const bar = $("splitter");
+  const main = document.querySelector("main");
+  let pct = setMapWidth(store.get("mapWidth", 45));
+  bar.addEventListener("pointerdown", (e) => {
+    bar.setPointerCapture(e.pointerId);
+    bar.classList.add("dragging");
+    document.body.classList.add("resizing");
+  });
+  bar.addEventListener("pointermove", (e) => {
+    if (!bar.hasPointerCapture(e.pointerId)) return;
+    const r = main.getBoundingClientRect();
+    pct = setMapWidth(((e.clientX - r.left) / r.width) * 100);
+  });
+  const endDrag = () => {
+    bar.classList.remove("dragging");
+    document.body.classList.remove("resizing");
+    store.set("mapWidth", pct);
+  };
+  bar.addEventListener("pointerup", endDrag);
+  bar.addEventListener("lostpointercapture", endDrag);
+  bar.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    pct = setMapWidth(pct + (e.key === "ArrowRight" ? 3 : -3));
+    store.set("mapWidth", pct);
+  });
+}
+
 async function init() {
   for (const [key, label] of Object.entries(SOURCES)) {
     $("sources").insertAdjacentHTML("beforeend", `<label><input type="checkbox" value="${key}" checked> ${label}</label>`);
@@ -315,6 +352,7 @@ async function init() {
   map = L.map("map", { scrollWheelZoom: true }).setView([38.5816, -121.4944], 11);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(map);
   markers = L.layerGroup().addTo(map);
+  initSplitter();
 
   const data = await fetch("listings.json", { cache: "no-store" }).then((r) => r.json());
   listings = data.listings;
