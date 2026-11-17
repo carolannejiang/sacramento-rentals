@@ -46,7 +46,8 @@ def convert(x):
         "lon": coords.get("longitude"),
         "moveIn": (x.get("availabilityDate") or "")[:10] or None,
         "pets": "Small dogs OK (Zillow search filter)",
-        "photos": [p["url"] for p in (x.get("listingPhotos") or [])][:6],
+        # Search results carry small "-p_e" thumbnails; "-cc_ft_960" is the 960px version.
+        "photos": [p["url"].replace("-p_e.jpg", "-cc_ft_960.jpg") for p in (x.get("listingPhotos") or [])][:15],
         "description": f"Units: {unit_text}" if unit_text else None,
         "rentZestimate": x.get("rentZestimate"),
         "scamFlags": [],

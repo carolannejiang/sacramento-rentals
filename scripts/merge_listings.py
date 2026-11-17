@@ -110,12 +110,12 @@ def main():
     fb_raw = ROOT / "data/raw/facebook.json"
     photos = {}
     if fb_raw.exists():
-        photos = {str(i.get("legacyId") or i.get("id")): [a["thumbnail"] for a in i.get("attachments") or [] if a.get("thumbnail")][:6]
+        photos = {str(i.get("legacyId") or i.get("id")): [a["thumbnail"] for a in i.get("attachments") or [] if a.get("thumbnail")][:15]
                   for i in json.loads(fb_raw.read_text())}
     rows = [x for x in rows if x["source"] != "facebook" or str(x["sourceId"]) in photos]
     for x in rows:
-        if x["source"] == "facebook" and not x.get("photos"):
-            x["photos"] = photos.get(str(x["sourceId"]), [])
+        if x["source"] == "facebook":
+            x["photos"] = photos.get(str(x["sourceId"])) or x.get("photos") or []
 
     # The user only wants whole units, never a room in a shared place.
     shared = [x for x in rows if x.get("unitType") == "room" or x.get("sharedSpace") is True]

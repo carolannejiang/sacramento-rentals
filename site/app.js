@@ -14,6 +14,7 @@ const TYPE_GROUPS = { apartment: ["apartment", "studio"], house: ["house"], cond
 const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
 
 let listings = [];
+let byId = new Map();
 let view = "all";
 let fav = new Set(store.get("fav", []));
 let hidden = new Set(store.get("hidden", []));
@@ -119,8 +120,15 @@ function card(x) {
     x.alsoAt?.length && `<span class="badge">Posted ${x.alsoAt.length + 1}×</span>`,
     ...(x.scamFlags || []).map((f) => `<span class="badge warn">⚠ ${esc(f)}</span>`),
   ].filter(Boolean).join("");
-  const photo = x.photos?.[0]
-    ? `<img class="photo" loading="lazy" src="${esc(x.photos[0])}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'photo nophoto',textContent:'No photo'}))">`
+  const n = x.photos?.length || 0;
+  const photo = n
+    ? `<div class="gallery" data-i="0">
+        <span class="nophoto-text">Photo unavailable</span>
+        <img class="photo" loading="lazy" src="${esc(x.photos[0])}" alt="" data-act="zoom" onerror="this.classList.add('broken')">
+        ${n > 1 ? `<button class="nav prev" data-act="prev" aria-label="Previous photo">‹</button>
+          <button class="nav next" data-act="next" aria-label="Next photo">›</button>
+          <span class="pcount">1/${n}</span>` : ""}
+      </div>`
     : `<div class="photo nophoto">No photo</div>`;
   const copies = (x.alsoAt || []).map((c, i) =>
     `<a href="${esc(c.url)}" target="_blank" rel="noopener">${c.source && c.source !== x.source ? SOURCES[c.source] + " ↗" : `copy ${i + 2}`}</a>`).join(" ");
@@ -166,13 +174,69 @@ function focusCard(id) {
   el.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
+// ---- photos: arrows on each card, and a full-size viewer ----
+function showPhoto(galleryEl, photos, i) {
+  i = (i + photos.length) % photos.length;
+  galleryEl.dataset.i = i;
+  const img = galleryEl.querySelector("img");
+  img.classList.remove("broken");
+  img.src = photos[i];
+  galleryEl.querySelector(".pcount").textContent = `${i + 1}/${photos.length}`;
+}
+
+const viewer = { photos: [], i: 0, gallery: null };
+
+function openViewer(photos, i, galleryEl) {
+  Object.assign(viewer, { photos, i, gallery: galleryEl });
+  $("lightbox").hidden = false;
+  stepViewer(0);
+}
+
+function stepViewer(delta) {
+  viewer.i = (viewer.i + delta + viewer.photos.length) % viewer.photos.length;
+  $("lbImg").src = viewer.photos[viewer.i];
+  $("lbCount").textContent = `${viewer.i + 1} / ${viewer.photos.length}`;
+  $("lbPrev").hidden = $("lbNext").hidden = viewer.photos.length < 2;
+}
+
+function closeViewer() {
+  $("lightbox").hidden = true;
+  // Leave the card showing the photo the viewer ended on.
+  if (viewer.gallery?.querySelector(".pcount")) showPhoto(viewer.gallery, viewer.photos, viewer.i);
+}
+
+$("lbPrev").addEventListener("click", () => stepViewer(-1));
+$("lbNext").addEventListener("click", () => stepViewer(1));
+$("lbClose").addEventListener("click", closeViewer);
+$("lightbox").addEventListener("click", (e) => { if (e.target === $("lightbox")) closeViewer(); });
+document.addEventListener("keydown", (e) => {
+  if ($("lightbox").hidden) return;
+  if (e.key === "Escape") closeViewer();
+  else if (e.key === "ArrowLeft") stepViewer(-1);
+  else if (e.key === "ArrowRight") stepViewer(1);
+});
+let touchX = null;
+$("lightbox").addEventListener("touchstart", (e) => { touchX = e.touches[0].clientX; }, { passive: true });
+$("lightbox").addEventListener("touchend", (e) => {
+  const dx = e.changedTouches[0].clientX - touchX;
+  if (Math.abs(dx) > 40) stepViewer(dx < 0 ? 1 : -1);
+});
+
 $("list").addEventListener("click", (e) => {
-  const btn = e.target.closest("button[data-act]");
+  const btn = e.target.closest("[data-act]");
   if (!btn) return;
   const cardEl = btn.closest(".card");
   const id = cardEl.dataset.id;
-  if (btn.dataset.act === "more") { cardEl.classList.toggle("open"); return; }
-  const set = btn.dataset.act === "fav" ? fav : hidden;
+  const act = btn.dataset.act;
+  if (act === "prev" || act === "next" || act === "zoom") {
+    const photos = byId.get(id).photos;
+    const g = btn.closest(".gallery");
+    const i = Number(g.dataset.i);
+    if (act === "zoom") openViewer(photos, i, g); else showPhoto(g, photos, i + (act === "next" ? 1 : -1));
+    return;
+  }
+  if (act === "more") { cardEl.classList.toggle("open"); return; }
+  const set = act === "fav" ? fav : hidden;
   set.has(id) ? set.delete(id) : set.add(id);
   store.set("fav", [...fav]);
   store.set("hidden", [...hidden]);
@@ -198,6 +262,7 @@ async function init() {
 
   const data = await fetch("listings.json", { cache: "no-store" }).then((r) => r.json());
   listings = data.listings;
+  byId = new Map(listings.map((x) => [x.id, x]));
   const updated = new Date(data.updatedAt);
   const newCount = listings.filter(isNew).length;
   $("meta").textContent = `${listings.length} listings · updated ${updated.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` +

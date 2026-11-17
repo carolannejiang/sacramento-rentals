@@ -203,7 +203,7 @@ for r in records:
                   else datetime.fromtimestamp(r["postedEpoch"], timezone.utc).isoformat().replace("+00:00", "Z"))
 
     desc = det.get("body")
-    photos = (det.get("thumbs") or r["images"])[:6]
+    photos = (det.get("thumbs") or r["images"])[:15]
 
     listings.append({
         "source": "craigslist",

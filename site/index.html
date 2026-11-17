@@ -52,6 +52,14 @@
   </div>
 </main>
 
+<div id="lightbox" hidden role="dialog" aria-label="Photo viewer">
+  <button id="lbClose" class="lb-close" aria-label="Close">×</button>
+  <button id="lbPrev" class="lb-nav lb-prev" aria-label="Previous photo">‹</button>
+  <img id="lbImg" alt="">
+  <button id="lbNext" class="lb-nav lb-next" aria-label="Next photo">›</button>
+  <span id="lbCount" class="lb-count"></span>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="app.js"></script>
 </body>

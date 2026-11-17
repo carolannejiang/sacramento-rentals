@@ -27,7 +27,7 @@ def main():
     # Only what later runs need from old posts: ids, post time (30-day pruning) and photos.
     raw = json.loads((ROOT / "data/raw/facebook.json").read_text())
     slim = [{"id": i.get("id"), "legacyId": i.get("legacyId"), "time": i.get("time"),
-             "attachments": [{"thumbnail": a["thumbnail"]} for a in i.get("attachments") or [] if a.get("thumbnail")][:6]}
+             "attachments": [{"thumbnail": a["thumbnail"]} for a in i.get("attachments") or [] if a.get("thumbnail")][:15]}
             for i in raw]
     (SEED / "data/raw/facebook.json").write_text(json.dumps(slim))
 
