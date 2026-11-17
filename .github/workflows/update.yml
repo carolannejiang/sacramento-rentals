@@ -69,13 +69,14 @@ jobs:
           key: data-${{ github.run_id }}
 
       - name: Deploy to Vercel
+        continue-on-error: true  # a Vercel problem shouldn't stop the GitHub Pages publish
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then echo "VERCEL_TOKEN not set; skipping"; exit 0; fi
-          npx --yes vercel@58.9.1 deploy site --prod --yes --token "$VERCEL_TOKEN"
+          npx --yes vercel@58.9.1 deploy site --prod --yes --token "$(printf %s "$VERCEL_TOKEN" | tr -d '[:space:]')"
 
       - uses: actions/upload-pages-artifact@v3
         with:
