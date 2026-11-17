@@ -34,7 +34,7 @@ function filtered() {
     if (view === "fav") return fav.has(x.id);
     if (view === "hidden") return hidden.has(x.id);
     if (hidden.has(x.id)) return false;
-    if (!f.sources.includes(x.source)) return false;
+    if (!(x.sources || [x.source]).some((s) => f.sources.includes(s))) return false;
     if (x.price == null ? !f.noPrice : x.price > f.maxPrice) return false;
     if (f.minBeds > 0 && x.beds != null && x.beds < f.minBeds) return false;
     const d = dogsOk(x);
@@ -101,7 +101,7 @@ function card(x) {
   const where = [x.neighborhood, x.address].filter(Boolean).join(" — ");
   const badges = [
     isNew(x) && `<span class="badge new">New</span>`,
-    `<span class="badge src-${x.source}">${SOURCES[x.source] || x.source}${x.group ? " · " + esc(x.group.split(/[|,]/)[0].trim()) : ""}</span>`,
+    ...(x.sources || [x.source]).map((s) => `<span class="badge src-${s}">${SOURCES[s] || s}${s === x.source && x.group ? " · " + esc(x.group.split(/[|,]/)[0].trim()) : ""}</span>`),
     dogsOk(x) === true && `<span class="badge">Dogs OK</span>`,
     x.moveIn && `<span class="badge">Move-in ${esc(x.moveIn)}</span>`,
     x.alsoAt?.length && `<span class="badge">Posted ${x.alsoAt.length + 1}×</span>`,
@@ -110,7 +110,8 @@ function card(x) {
   const photo = x.photos?.[0]
     ? `<img class="photo" loading="lazy" src="${esc(x.photos[0])}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'photo nophoto',textContent:'No photo'}))">`
     : `<div class="photo nophoto">No photo</div>`;
-  const copies = (x.alsoAt || []).map((c, i) => `<a href="${esc(c.url)}" target="_blank" rel="noopener">copy ${i + 2}</a>`).join(" ");
+  const copies = (x.alsoAt || []).map((c, i) =>
+    `<a href="${esc(c.url)}" target="_blank" rel="noopener">${c.source && c.source !== x.source ? SOURCES[c.source] + " ↗" : `copy ${i + 2}`}</a>`).join(" ");
   return `<li class="card" id="c-${CSS.escape(x.id)}" data-id="${esc(x.id)}">
     ${photo}
     <div>
@@ -120,7 +121,7 @@ function card(x) {
       <div class="badges">${badges}</div>
       ${x.description ? `<p class="desc">${esc(x.description)}</p>` : ""}
       <div class="actions">
-        <a href="${esc(x.url)}" target="_blank" rel="noopener">Open listing ↗</a> ${copies}
+        <a href="${esc(x.url)}" target="_blank" rel="noopener">${x.sources?.length > 1 ? SOURCES[x.source] : "Open listing"} ↗</a> ${copies}
         <button data-act="fav" class="${fav.has(x.id) ? "on" : ""}">${fav.has(x.id) ? "★ Saved" : "☆ Save"}</button>
         <button data-act="hide">${hidden.has(x.id) ? "Unhide" : "Hide"}</button>
         ${x.description ? `<button data-act="more">More</button>` : ""}
