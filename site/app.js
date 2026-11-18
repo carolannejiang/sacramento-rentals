@@ -134,6 +134,10 @@ function day(iso) {
   return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} (${ago(iso)})`;
 }
 
+function walkClass(score) {
+  return score >= 70 ? "very" : score >= 50 ? "walkable" : score >= 25 ? "somewhat" : "car";
+}
+
 function money(n) { return n == null ? "Price not listed" : "$" + Math.round(n).toLocaleString() + "/mo"; }
 
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
@@ -193,17 +197,17 @@ function card(x) {
         `<a href="${esc(c.url)}" target="_blank" rel="noopener">${i + 1}</a>`).join(" ")}</p>` : "";
   return `<li class="card" id="c-${CSS.escape(x.id)}" data-id="${esc(x.id)}">
     <div class="corner">
-      <button data-act="fav" class="star ${fav.has(x.id) ? "on" : ""}" aria-pressed="${fav.has(x.id)}" aria-label="Save" title="${fav.has(x.id) ? "Saved" : "Save"}">${fav.has(x.id) ? "★" : "☆"}</button>
-      <button data-act="messaged" class="${messaged.has(x.id) ? "on" : ""}" aria-pressed="${messaged.has(x.id)}">${messaged.has(x.id) ? "✓ Contacted" : "✉ Contacted"}</button>
+      <button data-act="fav" class="icon star ${fav.has(x.id) ? "on" : ""}" aria-pressed="${fav.has(x.id)}" aria-label="Save" title="${fav.has(x.id) ? "Saved" : "Save"}">${fav.has(x.id) ? "★" : "☆"}</button>
+      <button data-act="messaged" class="icon check ${messaged.has(x.id) ? "on" : ""}" aria-pressed="${messaged.has(x.id)}" aria-label="Contacted" title="${messaged.has(x.id) ? "Contacted" : "Mark as contacted"}">${messaged.has(x.id) ? "☑" : "☐"}</button>
+      <button data-act="hide" class="icon hide" aria-label="${hidden.has(x.id) ? "Unhide" : "Hide"}" title="${hidden.has(x.id) ? "Unhide" : "Hide"}">${hidden.has(x.id) ? "↩" : "✕"}</button>
     </div>
     ${photo}
     <div>
-      <div class="top"><span class="price">${money(x.price)}</span><span class="specs">${specs}</span><span class="specs" title="${x.postedAt ? "Date the listing was posted" : "The source doesn't give a post date"}">${
-        x.postedAt ? "posted " + day(x.postedAt) : postedDate(x) ? "first seen " + day(x.firstSeen) : "post date not listed"}</span></div>
+      <div class="top"><span class="price">${money(x.price)}</span><span class="specs">${specs}</span></div>
       <p class="title">${esc(x.title)}</p>
       ${where ? `<p class="where">${esc(where)}</p>` : ""}
       <p class="drive">${drives || "🚗 Location not listed"}</p>
-      ${x.walk ? `<p class="walk" title="Within a 10-minute walk: ${x.walk.food} restaurants & cafés, ${x.walk.shops} shops, ${x.walk.parks} parks; ${x.walk.transit} transit stops within 5 minutes">🚶 <b>${esc(x.walk.label)}</b> (${x.walk.score}) · ${x.walk.amenities} shops & restaurants within 10 min${x.walk.groceryMi != null ? ` · grocery ${x.walk.groceryMi} mi` : ""}</p>` : ""}
+      ${x.walk ? `<p class="walk" title="Within a 10-minute walk: ${x.walk.food} restaurants & cafés, ${x.walk.shops} shops, ${x.walk.parks} parks; ${x.walk.transit} transit stops within 5 minutes">🚶 <b class="walk-${walkClass(x.walk.score)}">${esc(x.walk.label)}</b> (${x.walk.score}) · ${x.walk.amenities} shops & restaurants within 10 min${x.walk.groceryMi != null ? ` · grocery ${x.walk.groceryMi} mi` : ""}</p>` : ""}
       <div class="badges">${badges}</div>
       ${highlights.length ? `<div class="highlights">${highlights.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
       ${x.description ? `<p class="desc">${esc(x.description)}</p>` : ""}
@@ -212,11 +216,15 @@ function card(x) {
         ${featureList ? `<dl class="features">${featureList}</dl>` : ""}
         ${repeatList}
       </div>
-      <div class="actions">
-        <a href="${esc(x.url)}" target="_blank" rel="noopener">${x.sources?.length > 1 ? SOURCES[x.source] : "Open listing"} ↗</a> ${copies}
-        <button data-act="hide">${hidden.has(x.id) ? "Unhide" : "Hide"}</button>
-        ${hasMore ? `<button data-act="more">Details</button>` : ""}
-      </div>
+    </div>
+    <div class="actions">
+      <span class="posted" title="${x.postedAt ? "Date the listing was posted" : "The source doesn't give a post date"}">${
+        x.postedAt ? "Posted " + day(x.postedAt) : postedDate(x) ? "First seen " + day(x.firstSeen) : "Post date not listed"}</span>
+      <span class="links">
+        ${hasMore ? `<button data-act="more">Expand</button>` : ""}
+        ${copies}
+        <a href="${esc(x.url)}" target="_blank" rel="noopener">${x.sources?.length > 1 ? SOURCES[x.source] : "Open listing"} ↗</a>
+      </span>
     </div>
   </li>`;
 }
@@ -243,6 +251,13 @@ function render() {
 }
 
 // ---- heatmap of shops & restaurants (OpenStreetMap), toggled from the map's corner ----
+// About 250 m around each place, whatever the zoom level.
+function heatSize() {
+  const metersPerPixel = 156543 * Math.cos((map.getCenter().lat * Math.PI) / 180) / 2 ** map.getZoom();
+  const radius = Math.max(8, Math.min(80, 250 / metersPerPixel));
+  return { radius, blur: radius * 0.9 };
+}
+
 function initHeatmap() {
   let layer = null;
   map.createPane("heat");
@@ -251,16 +266,22 @@ function initHeatmap() {
   const control = L.control({ position: "topright" });
   control.onAdd = () => {
     const div = L.DomUtil.create("label", "heat-toggle");
-    div.innerHTML = `<input type="checkbox"> Shops & restaurants`;
+    div.innerHTML = `<span><input type="checkbox"> Shops & restaurants</span>
+      <span class="heat-legend"><i></i>fewer → more</span>`;
     L.DomEvent.disableClickPropagation(div);
     const box = div.querySelector("input");
     box.checked = store.get("heatmap", false);
+    const showLegend = () => div.classList.toggle("on", box.checked);
+    box.addEventListener("change", showLegend);
+    showLegend();
     const apply = async () => {
       store.set("heatmap", box.checked);
       if (box.checked && !layer) {
         const points = await fetch("places.json").then((r) => r.json()).catch(() => []);
-        layer = L.heatLayer(points, { radius: 18, blur: 22, maxZoom: 15, minOpacity: 0.25,
+        layer = L.heatLayer(points, { ...heatSize(), maxZoom: 13, minOpacity: 0.3,
           gradient: { 0.2: "#fde2b6", 0.5: "#f8b26a", 0.8: "#ef7d3c", 1: "#c2410c" } });
+        // Blobs are sized in pixels; grow them as you zoom in so they keep covering whole blocks.
+        map.on("zoomend", () => layer.setOptions(heatSize()));
       }
       if (!layer) return;
       if (!box.checked) return layer.remove();
@@ -372,7 +393,10 @@ $("list").addEventListener("click", (e) => {
     if (act === "zoom") openViewer(photos, i, g); else showPhoto(g, photos, i + (act === "next" ? 1 : -1));
     return;
   }
-  if (act === "more") { cardEl.classList.toggle("open"); return; }
+  if (act === "more") {
+    btn.textContent = cardEl.classList.toggle("open") ? "Collapse" : "Expand";
+    return;
+  }
   const name = { fav: "fav", hide: "hidden", messaged: "messaged" }[act];
   const set = markSets()[name];
   const on = !set.has(id);

@@ -68,6 +68,10 @@ jobs:
           path: data
           key: data-${{ github.run_id }}
 
+      # Make browsers fetch the new code after each deploy instead of a cached copy.
+      - name: Version static files
+        run: sed -i "s/\(app\.js\|style\.css\)\"/\1?v=${GITHUB_SHA::7}\"/g" site/index.html
+
       - name: Deploy to Vercel
         continue-on-error: true  # a Vercel problem shouldn't stop the GitHub Pages publish
         env:
