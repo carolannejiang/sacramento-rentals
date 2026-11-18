@@ -13,10 +13,11 @@
   <div class="brand">
     <h1>Sacramento Rentals</h1>
     <p id="meta">Loading…</p>
-    <p class="sync-row"><span id="syncStatus" class="sync off"></span> <button id="syncBtn" class="link-btn" type="button">Enter passcode</button></p>
+    <p class="sync-row"><span id="syncStatus" class="sync off"></span> <button id="syncBtn" class="link-btn" type="button">Sign in</button></p>
     <form id="syncForm" class="sync-form" hidden>
-      <input id="syncInput" type="password" autocomplete="current-password" placeholder="Passcode" aria-label="Sync passcode">
-      <button type="submit">Unlock</button>
+      <input id="syncName" type="text" autocomplete="username" placeholder="Your name" aria-label="Your name" maxlength="30">
+      <input id="syncInput" type="password" autocomplete="current-password" placeholder="Passcode (6+ characters)" aria-label="Passcode">
+      <button type="submit">Sign in</button>
       <button type="button" id="syncCancel" class="link-btn">Cancel</button>
     </form>
   </div>
@@ -25,6 +26,7 @@
     <button data-view="fav">Saved <span id="favCount"></span></button>
     <button data-view="messaged">Contacted <span id="messagedCount"></span></button>
     <button data-view="hidden">Hidden <span id="hiddenCount"></span></button>
+    <select id="markedBy" aria-label="Whose saved and contacted listings to show" hidden></select>
   </nav>
 </header>
 

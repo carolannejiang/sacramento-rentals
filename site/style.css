@@ -20,6 +20,9 @@ h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
 .sync-row { margin: 2px 0 0; }
 .link-btn { font: inherit; font-size: 12px; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; }
 .sync-form { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.badge.saved-by { background: #fdf3d6; color: #8a6100; }
+#markedBy { font: inherit; font-size: 13px; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; }
+.sync-form { flex-wrap: wrap; }
 .sync-form input { font: inherit; font-size: 13px; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; width: 160px; }
 .sync-form button[type=submit] { font: inherit; font-size: 13px; background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 5px 12px; cursor: pointer; }
 .tabs { display: flex; gap: 4px; }

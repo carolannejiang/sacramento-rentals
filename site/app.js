@@ -46,8 +46,8 @@ function filtered() {
   const f = readFilters();
   const q = f.q.trim().toLowerCase();
   let out = listings.filter((x) => {
-    if (view === "fav") return fav.has(x.id);
-    if (view === "messaged") return messaged.has(x.id);
+    if (view === "fav") return inMarkedView("fav", x.id);
+    if (view === "messaged") return inMarkedView("messaged", x.id);
     if (view === "hidden") return hidden.has(x.id);
     if (hidden.has(x.id)) return false;
     if (!(x.sources || [x.source]).some((s) => f.sources.includes(s))) return false;
@@ -148,7 +148,9 @@ function card(x) {
   }).filter(Boolean).join("<br>") : "";
   const badges = [
     isNew(x) && `<span class="badge new">New</span>`,
-    messaged.has(x.id) && `<span class="badge messaged">✉ Contacted</span>`,
+    whoMarked("messaged", x.id).length && `<span class="badge messaged">✉ Contacted: ${esc(whoMarked("messaged", x.id).join(", "))}</span>`,
+    whoMarked("fav", x.id).filter((n) => n !== "You").length &&
+      `<span class="badge saved-by">★ ${esc(whoMarked("fav", x.id).filter((n) => n !== "You").join(", "))}</span>`,
     ...(x.sources || [x.source]).map((s) => `<span class="badge src-${s}">${SOURCES[s] || s}${s === x.source && x.group ? " · " + esc(x.group.split(/[|,]/)[0].trim()) : ""}</span>`),
     x.listedBy === "individual" && `<span class="badge lister" title="${esc(x.listerName || "Posted by an owner or tenant")}">👤 Individual</span>`,
     x.listedBy === "company" && `<span class="badge lister">🏢 ${esc(x.listerName || "Property manager")}</span>`,
@@ -341,109 +343,140 @@ $("list").addEventListener("click", (e) => {
   render();
 });
 
-// ---- saved / hidden / contacted marks, synced across devices through /api/marks ----
-// A device is paired by opening the site once with #sync=<key>; the key is then kept in this
-// browser. Without a key, marks stay in this browser only.
+// ---- accounts: marks belong to a name + passcode, and everyone sees each other's saves ----
+// Signed out, marks stay in this browser. Signed in, your marks live on the server under your
+// account (so they follow you to any device), and other people's saved and contacted
+// listings are shown too. Hidden listings are only ever your own.
 const SYNC_URL = "https://sacramento-rentals.vercel.app/api/marks";
-let syncKey = store.get("syncKey", null);
-let syncState = "off"; // off | ok | error
+let account = store.get("account", null); // { name, passcode }
+let syncState = "off"; // off | ok | bad | error
+let others = {}; // slug -> { name, fav: Set, messaged: Set }
 
 function markSets() { return { fav, hidden, messaged }; }
 
 function saveMarksLocally() {
+  if (account) return; // signed in: the server is the copy that matters
   for (const [name, set] of Object.entries(markSets())) store.set(name, [...set]);
 }
 
-async function syncRequest(body) {
+async function syncRequest(body, creds = account) {
   const r = await fetch(SYNC_URL, {
     method: body ? "POST" : "GET",
-    headers: { "x-sync-key": encodeURIComponent(syncKey), ...(body ? { "content-type": "application/json" } : {}) },
+    headers: {
+      "x-user": encodeURIComponent(creds.name), "x-pass": encodeURIComponent(creds.passcode),
+      ...(body ? { "content-type": "application/json" } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) throw new Error(`sync ${r.status}`);
-  return r.json();
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(data.error || `sync ${r.status}`), { status: r.status });
+  return data;
 }
 
 function pushMark(set, id, on) {
-  if (!syncKey) return;
+  if (!account) return;
   syncRequest({ set, id, on }).then(() => setSyncState("ok"), () => setSyncState("error"));
 }
 
-// Load the shared marks. Marks made on this device before it was paired are uploaded once.
 async function pullMarks() {
-  if (!syncKey) return setSyncState("off");
+  if (!account) return setSyncState("off");
   try {
-    const remote = await syncRequest();
+    const data = await syncRequest();
+    const mine = data.marks[data.me.slug] || {};
     for (const [name, set] of Object.entries(markSets())) {
-      const shared = new Set(remote[name] || []);
-      if (!store.get("syncedOnce", false)) for (const id of set) if (!shared.has(id)) { shared.add(id); pushMark(name, id, true); }
       set.clear();
-      shared.forEach((id) => set.add(id));
+      (mine[name] || []).forEach((id) => set.add(id));
     }
-    store.set("syncedOnce", true);
-    saveMarksLocally();
+    others = {};
+    for (const p of data.people) {
+      if (p.slug === data.me.slug) continue;
+      const m = data.marks[p.slug] || {};
+      others[p.slug] = { name: p.name, fav: new Set(m.fav || []), messaged: new Set(m.messaged || []) };
+    }
+    account.name = data.me.name;
     setSyncState("ok");
+    renderPeople();
     render();
-  } catch (e) { setSyncState(String(e.message).includes("401") ? "bad" : "error"); }
+  } catch (e) { setSyncState(e.status === 401 ? "bad" : "error"); }
+}
+
+// Who saved / contacted a listing, as display names ("You" first).
+function whoMarked(set, id) {
+  const names = markSets()[set].has(id) ? ["You"] : [];
+  for (const p of Object.values(others)) if (p[set]?.has(id)) names.push(p.name);
+  return names;
+}
+
+// For the Saved and Contacted tabs: whose marks to show (me, everyone, or one person).
+function inMarkedView(set, id) {
+  const who = $("markedBy").value;
+  if (who === "me" || !account) return markSets()[set].has(id);
+  if (who === "all") return whoMarked(set, id).length > 0;
+  return others[who]?.[set]?.has(id) || false;
+}
+
+function renderPeople() {
+  const sel = $("markedBy");
+  const keep = sel.value;
+  sel.innerHTML = `<option value="all">Everyone</option><option value="me">Just me</option>` +
+    Object.entries(others).map(([slug, p]) => `<option value="${esc(slug)}">${esc(p.name)}</option>`).join("");
+  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : "all";
+  sel.hidden = !account || !Object.keys(others).length;
 }
 
 function setSyncState(s) {
   syncState = s;
-  const el = $("syncStatus");
-  if (!el) return;
-  el.textContent = {
-    off: "Saved marks stay on this device",
-    ok: "✓ Synced across devices",
-    bad: "Wrong passcode",
-    error: "⚠ Sync failed; marks saved on this device",
+  $("syncStatus").textContent = {
+    off: "Sign in to save listings to your account and see what friends save.",
+    ok: `Signed in as ${account?.name}`,
+    bad: "Wrong passcode for that name",
+    error: "⚠ Couldn't reach the server; try again",
   }[s];
-  el.className = `sync ${s}`;
-  $("syncBtn").textContent = s === "ok" ? "Sign out" : "Enter passcode";
+  $("syncStatus").className = `sync ${s}`;
+  $("syncBtn").textContent = account && s !== "bad" ? "Sign out" : "Sign in";
 }
 
-// The passcode is checked by /api/marks and remembered in this browser.
-async function unlock(code) {
-  syncKey = code;
+async function signIn(name, passcode) {
   try {
-    await syncRequest();
-    store.set("syncKey", code);
+    const res = await syncRequest({ action: "login" }, { name, passcode });
+    // Marks made in this browser while signed out move into the account.
+    const local = Object.fromEntries(Object.entries(markSets()).map(([k, set]) => [k, [...set]]));
+    account = { name: res.name, passcode };
+    store.set("account", account);
+    for (const [set, ids] of Object.entries(local)) for (const id of ids) await syncRequest({ set, id, on: true });
+    for (const set of Object.keys(local)) store.set(set, []);
     await pullMarks();
   } catch (e) {
-    syncKey = store.get("syncKey", null);
-    setSyncState(String(e.message).includes("401") ? "bad" : "error");
+    $("syncStatus").textContent = e.status === 401 ? "Wrong passcode for that name" : e.message;
+    $("syncStatus").className = "sync bad";
   }
+}
+
+function signOut() {
+  account = null;
+  store.set("account", null);
+  others = {};
+  for (const set of Object.values(markSets())) set.clear();
+  renderPeople();
+  setSyncState("off");
+  render();
 }
 
 $("syncBtn").addEventListener("click", () => {
-  if (syncState === "ok") {
-    syncKey = null;
-    store.set("syncKey", null);
-    setSyncState("off");
-    return;
-  }
+  if (account && syncState !== "bad") return signOut();
   $("syncForm").hidden = false;
-  $("syncInput").focus();
+  $("syncName").focus();
 });
 $("syncCancel").addEventListener("click", () => { $("syncForm").hidden = true; });
 $("syncForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const code = $("syncInput").value.trim();
-  if (!code) return;
+  const name = $("syncName").value.trim(), passcode = $("syncInput").value;
+  if (!name || !passcode) return;
   $("syncForm").hidden = true;
   $("syncInput").value = "";
-  await unlock(code);
+  await signIn(name, passcode);
 });
-
-// Old pairing links (#sync=...) still work.
-function pairFromLink() {
-  const m = location.hash.match(/sync=([^&]+)/);
-  if (!m) return;
-  syncKey = decodeURIComponent(m[1]);
-  store.set("syncKey", syncKey);
-  history.replaceState(null, "", location.pathname + location.search);
-}
-
-pairFromLink();
+$("markedBy").addEventListener("change", () => render());
 window.addEventListener("focus", () => pullMarks());
 
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
