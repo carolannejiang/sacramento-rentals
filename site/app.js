@@ -429,7 +429,7 @@ function setSyncState(s) {
   $("syncStatus").textContent = {
     off: "Sign in to save listings to your account and see what friends save.",
     ok: `Signed in as ${account?.name}`,
-    bad: "Wrong passcode for that name",
+    bad: "Wrong passcode",
     error: "⚠ Couldn't reach the server; try again",
   }[s];
   $("syncStatus").className = `sync ${s}`;
@@ -438,7 +438,15 @@ function setSyncState(s) {
 
 async function signIn(name, passcode) {
   try {
-    const res = await syncRequest({ action: "login" }, { name, passcode });
+    let res;
+    try {
+      res = await syncRequest({ action: "login" }, { name, passcode });
+    } catch (e) {
+      if (e.status !== 404) throw e;
+      // Names ignore case and spaces, so this only appears for a genuinely new name.
+      if (!confirm(`There's no account named "${name}" yet. Create it?`)) return setSyncState(account ? "ok" : "off");
+      res = await syncRequest({ action: "login", create: true }, { name, passcode });
+    }
     // Marks made in this browser while signed out move into the account.
     const local = Object.fromEntries(Object.entries(markSets()).map(([k, set]) => [k, [...set]]));
     account = { name: res.name, passcode };
@@ -447,7 +455,7 @@ async function signIn(name, passcode) {
     for (const set of Object.keys(local)) store.set(set, []);
     await pullMarks();
   } catch (e) {
-    $("syncStatus").textContent = e.status === 401 ? "Wrong passcode for that name" : e.message;
+    $("syncStatus").textContent = e.status === 401 ? "Wrong passcode" : e.message;
     $("syncStatus").className = "sync bad";
   }
 }

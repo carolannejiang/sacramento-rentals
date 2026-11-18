@@ -1,14 +1,15 @@
-// Saved / hidden / contacted marks per person, shared between everyone who has an account.
+// Saved / hidden / contacted marks per person, shared between everyone in the group.
 //
-// An account is a name + passcode. Signing in with a new name creates it. Each person's saved
-// and contacted listings are visible to every signed-in person; hidden listings stay private.
-// Storage is a private Vercel Blob store where the data lives in the pathnames:
-//   users/<slug>/<name, base64url>.<salt>.<scrypt hash>
+// Everyone signs in with their name plus the group passcode (GROUP_PASSCODE env var). Names
+// ignore case, spaces and punctuation, so "Carol Anne" and "carolanne" are the same account.
+// Each person's saved and contacted listings are visible to the whole group; hidden listings
+// stay private. Storage is a private Vercel Blob store where the data lives in the pathnames:
+//   users/<slug>/<display name, base64url>
 //   marks/<slug>/<set>/<listing id, base64url>     (empty blob; delete = unmark)
 // so two devices never overwrite each other. Requests carry x-user and x-pass headers
 // (URI-encoded).
 import { del, list, put } from "@vercel/blob";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 
 const SETS = ["fav", "hidden", "messaged"];
 const PRIVATE_SETS = ["hidden"];
@@ -16,8 +17,7 @@ const ORIGINS = ["https://sacramento-rentals.vercel.app", "https://carolannejian
 
 const b64 = (s) => Buffer.from(s).toString("base64url");
 const unb64 = (s) => Buffer.from(s, "base64url").toString();
-const slugOf = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
-const hash = (passcode, salt) => scryptSync(passcode, salt, 32).toString("hex");
+const slugOf = (name) => name.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 30);
 
 function headers(request) {
   const origin = request.headers.get("origin");
@@ -58,22 +58,20 @@ async function listAll(prefix) {
 
 async function findUser(slug) {
   const [path] = await listAll(`users/${slug}/`);
-  if (!path) return null;
-  const [encName, salt, digest] = path.split("/")[2].split(".");
-  return { name: unb64(encName), salt, digest };
+  return path ? { slug, name: unb64(path.split("/")[2]) } : null;
 }
 
-function passcodeMatches(user, passcode) {
-  const given = Buffer.from(hash(passcode, user.salt), "hex");
-  return timingSafeEqual(given, Buffer.from(user.digest, "hex"));
+function passcodeMatches(passcode) {
+  const given = Buffer.from(passcode.trim().toLowerCase());
+  const expected = Buffer.from((process.env.GROUP_PASSCODE || "").trim().toLowerCase());
+  return expected.length > 0 && given.length === expected.length && timingSafeEqual(given, expected);
 }
 
 // Returns the signed-in person, or null.
 async function authenticate(request) {
   const { slug, passcode } = credentials(request);
-  if (!slug || !passcode) return null;
-  const user = await findUser(slug);
-  return user && passcodeMatches(user, passcode) ? { ...user, slug } : null;
+  if (!slug || !passcodeMatches(passcode)) return null;
+  return findUser(slug);
 }
 
 export function OPTIONS(request) {
@@ -101,12 +99,13 @@ export async function POST(request) {
 
   if (body.action === "login") {
     const { name, slug, passcode } = credentials(request);
-    if (!slug) return json(request, { error: "Enter a name" }, 400);
-    if (passcode.length < 6) return json(request, { error: "Use a passcode of at least 6 characters" }, 400);
+    if (!slug) return json(request, { error: "Enter your name" }, 400);
+    if (!passcodeMatches(passcode)) return denied(request);
     const user = await findUser(slug);
-    if (user) return passcodeMatches(user, passcode) ? json(request, { name: user.name, slug }) : denied(request);
-    const salt = randomBytes(16).toString("hex");
-    await put(`users/${slug}/${b64(name)}.${salt}.${hash(passcode, salt)}`, "1", { access: "private", addRandomSuffix: false });
+    if (user) return json(request, user);
+    // Only create an account when the person confirmed it, so a typo doesn't make a new one.
+    if (!body.create) return json(request, { error: "no account", slug }, 404);
+    await put(`users/${slug}/${b64(name)}`, "1", { access: "private", addRandomSuffix: false });
     return json(request, { name, slug, created: true });
   }
 
