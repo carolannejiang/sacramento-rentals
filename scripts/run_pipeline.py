@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PY = sys.executable
 ZILLOW_EVERY_DAYS = 3  # a full Zillow pull costs ~$0.70 on Apify
 FACEBOOK_WINDOW = "8 hours"  # the schedule runs every 6 hours; the overlap catches late posts
+PLACES_EVERY_DAYS = 7
 CL_SEARCH, CL_DETAILS = "data/raw/craigslist_search", "data/raw/craigslist_details"
 
 
@@ -52,6 +53,12 @@ def main():
         failed.append("zillow details")
     if not run("Zillow normalize", "scripts/normalize_zillow.py"):
         failed.append("zillow")
+
+    # Shops, restaurants, groceries, parks and transit for walkability; they change slowly.
+    places = ROOT / "data/raw/places.json"
+    if not places.exists() or time.time() - places.stat().st_mtime > PLACES_EVERY_DAYS * 86400:
+        if not run("Places (OpenStreetMap)", "scripts/fetch_places.py"):
+            failed.append("places")
 
     if not run("Who posted (Craigslist/Facebook)", "scripts/classify_lister.py"):
         failed.append("lister classification")

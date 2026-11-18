@@ -13,6 +13,9 @@ workflow refreshes it every 6 hours and publishes `site/` to GitHub Pages and Ve
 | Facebook groups (`sources/facebook_groups.json`) | Apify `apify/facebook-groups-scraper`, then Claude sorts posts (`parse_facebook.py`) | every run, last 8 hours |
 | Zillow (`sources/zillow_searches.json`) | Apify `maxcopell/zillow-scraper`; features from `maxcopell/zillow-detail-scraper` for new listings only | every 3 days |
 
+Walkability comes from OpenStreetMap shops, restaurants, groceries, parks and transit
+(`fetch_places.py`, weekly; scored in `walkability.py`).
+
 `merge_listings.py` drops shared rooms and rented posts, collapses cross-posts, and writes
 `site/listings.json` (poster names removed).
 

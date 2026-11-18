@@ -12,7 +12,7 @@ const TYPE_LABELS = { apartment: "Apartment", studio: "Studio", house: "House", 
 // Which unitType values each "Home type" filter option covers.
 const TYPE_GROUPS = { apartment: ["apartment", "studio"], house: ["house"], condo: ["condo", "townhouse"], duplex: ["duplex"] };
 const HIGHLIGHT_GROUPS = ["Laundry", "Cooling", "Parking", "In the unit", "Appliances", "Community"];
-const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "listedBy", "postedWithin", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
+const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "listedBy", "minWalk", "postedWithin", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
 
 let listings = [];
 let destinations = [];
@@ -56,6 +56,8 @@ function filtered() {
     if (f.homeType !== "any" && !TYPE_GROUPS[f.homeType].includes(x.unitType)) return false;
     // Unknown posters are left out of both choices: only show what's actually known.
     if (f.listedBy !== "any" && x.listedBy !== f.listedBy) return false;
+    // Like "Listed by", a walkability filter only shows listings whose surroundings are known.
+    if (f.minWalk && !(x.walk?.score >= f.minWalk)) return false;
     if (f.minSqft && x.sqft && x.sqft < f.minSqft) return false;
     if (f.postedWithin && (!postedDate(x) || Date.now() - new Date(postedDate(x)) > f.postedWithin * 864e5)) return false;
     // Listings without a known location stay visible, like unknown sqft.
@@ -74,6 +76,8 @@ function filtered() {
     const id = f.sort.slice(6);
     const t = (x) => x.commute?.[id]?.min ?? Infinity;
     out.sort((a, b) => t(a) - t(b));
+  } else if (f.sort === "walk") {
+    out.sort((a, b) => (b.walk?.score ?? -1) - (a.walk?.score ?? -1));
   } else if (f.sort === "priceAsc") out.sort((a, b) => price(a) - price(b));
   else if (f.sort === "priceDesc") out.sort((a, b) => (b.price ?? -1) - (a.price ?? -1));
   else out.sort((a, b) => (postedDate(b) || "").localeCompare(postedDate(a) || ""));
@@ -86,6 +90,7 @@ function readFilters() {
     minBeds: Number($("minBeds").value),
     homeType: $("homeType").value,
     listedBy: $("listedBy").value,
+    minWalk: Number($("minWalk").value),
     minSqft: Number($("minSqft").value) || 0,
     postedWithin: Number($("postedWithin").value),
     maxDrive: Object.fromEntries(destinations.map((d) => [d.id, Number($(`drive_${d.id}`)?.value) || 0])),
@@ -198,6 +203,7 @@ function card(x) {
       <p class="title">${esc(x.title)}</p>
       ${where ? `<p class="where">${esc(where)}</p>` : ""}
       <p class="drive">${drives || "🚗 Location not listed"}</p>
+      ${x.walk ? `<p class="walk" title="Within a 10-minute walk: ${x.walk.food} restaurants & cafés, ${x.walk.shops} shops, ${x.walk.parks} parks; ${x.walk.transit} transit stops within 5 minutes">🚶 <b>${esc(x.walk.label)}</b> (${x.walk.score}) · ${x.walk.amenities} shops & restaurants within 10 min${x.walk.groceryMi != null ? ` · grocery ${x.walk.groceryMi} mi` : ""}</p>` : ""}
       <div class="badges">${badges}</div>
       ${highlights.length ? `<div class="highlights">${highlights.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
       ${x.description ? `<p class="desc">${esc(x.description)}</p>` : ""}
@@ -234,6 +240,39 @@ function render() {
     m.source = x.source;
     markerById.set(x.id, m);
   }
+}
+
+// ---- heatmap of shops & restaurants (OpenStreetMap), toggled from the map's corner ----
+function initHeatmap() {
+  let layer = null;
+  map.createPane("heat");
+  map.getPane("heat").style.zIndex = 350; // below the dots (overlay pane is 400)
+  map.getPane("heat").style.pointerEvents = "none";
+  const control = L.control({ position: "topright" });
+  control.onAdd = () => {
+    const div = L.DomUtil.create("label", "heat-toggle");
+    div.innerHTML = `<input type="checkbox"> Shops & restaurants`;
+    L.DomEvent.disableClickPropagation(div);
+    const box = div.querySelector("input");
+    box.checked = store.get("heatmap", false);
+    const apply = async () => {
+      store.set("heatmap", box.checked);
+      if (box.checked && !layer) {
+        const points = await fetch("places.json").then((r) => r.json()).catch(() => []);
+        layer = L.heatLayer(points, { radius: 18, blur: 22, maxZoom: 15, minOpacity: 0.25,
+          gradient: { 0.2: "#fde2b6", 0.5: "#f8b26a", 0.8: "#ef7d3c", 1: "#c2410c" } });
+      }
+      if (!layer) return;
+      if (!box.checked) return layer.remove();
+      layer.addTo(map);
+      // Leaflet.heat draws into the same pane as the listing dots; move it underneath them.
+      map.getPane("heat").appendChild(layer._canvas);
+    };
+    box.addEventListener("change", apply);
+    if (box.checked) apply();
+    return div;
+  };
+  control.addTo(map);
 }
 
 // ---- hovering a listing highlights its dot and grays out the rest ----
@@ -538,6 +577,7 @@ async function init() {
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(map);
   markers = L.layerGroup().addTo(map);
   initSplitter();
+  initHeatmap();
 
   const data = await fetch("listings.json", { cache: "no-store" }).then((r) => r.json());
   listings = data.listings;

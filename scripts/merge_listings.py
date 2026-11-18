@@ -4,7 +4,8 @@
 - Collapses cross-posted duplicates: same source, same price, near-identical description,
   and (outside Facebook) same title. The kept record gets `alsoAt`: [{group, url}].
 - Records when each listing was first seen (data/state.json) so the site can mark new ones.
-- Adds map positions from addresses and drive times to sources/destinations.json (commute.py).
+- Adds map positions from addresses and drive times to sources/destinations.json (commute.py),
+  and what's within walking distance (walkability.py).
 """
 import json
 import math
@@ -13,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from commute import add_commutes, geocode_missing
+from walkability import add_walkability
 
 ROOT = Path(__file__).resolve().parent.parent
 PRIVATE_FIELDS = ("poster", "posterId")
@@ -186,6 +188,7 @@ def main():
     combined = merge_across_sources(list(merged.values()))
     print(f"Folded {len(merged) - len(combined)} reposts and cross-platform copies into the same unit")
     destinations = add_commutes(combined)
+    add_walkability(combined)
     out = sorted(combined, key=lambda x: x.get("postedAt") or x["firstSeen"], reverse=True)
     (ROOT / "data/all_listings.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))
     public = [{k: v for k, v in x.items() if k not in PRIVATE_FIELDS} for x in out]
