@@ -332,13 +332,79 @@ $("list").addEventListener("click", (e) => {
     return;
   }
   if (act === "more") { cardEl.classList.toggle("open"); return; }
-  const set = { fav, hide: hidden, messaged }[act];
-  set.has(id) ? set.delete(id) : set.add(id);
-  store.set("fav", [...fav]);
-  store.set("hidden", [...hidden]);
-  store.set("messaged", [...messaged]);
+  const name = { fav: "fav", hide: "hidden", messaged: "messaged" }[act];
+  const set = markSets()[name];
+  const on = !set.has(id);
+  on ? set.add(id) : set.delete(id);
+  saveMarksLocally();
+  pushMark(name, id, on);
   render();
 });
+
+// ---- saved / hidden / contacted marks, synced across devices through /api/marks ----
+// A device is paired by opening the site once with #sync=<key>; the key is then kept in this
+// browser. Without a key, marks stay in this browser only.
+const SYNC_URL = "https://sacramento-rentals.vercel.app/api/marks";
+let syncKey = store.get("syncKey", null);
+let syncState = "off"; // off | ok | error
+
+function markSets() { return { fav, hidden, messaged }; }
+
+function saveMarksLocally() {
+  for (const [name, set] of Object.entries(markSets())) store.set(name, [...set]);
+}
+
+async function syncRequest(body) {
+  const r = await fetch(SYNC_URL, {
+    method: body ? "POST" : "GET",
+    headers: { "x-sync-key": syncKey, ...(body ? { "content-type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) throw new Error(`sync ${r.status}`);
+  return r.json();
+}
+
+function pushMark(set, id, on) {
+  if (!syncKey) return;
+  syncRequest({ set, id, on }).then(() => setSyncState("ok"), () => setSyncState("error"));
+}
+
+// Load the shared marks. Marks made on this device before it was paired are uploaded once.
+async function pullMarks() {
+  if (!syncKey) return setSyncState("off");
+  try {
+    const remote = await syncRequest();
+    for (const [name, set] of Object.entries(markSets())) {
+      const shared = new Set(remote[name] || []);
+      if (!store.get("syncedOnce", false)) for (const id of set) if (!shared.has(id)) { shared.add(id); pushMark(name, id, true); }
+      set.clear();
+      shared.forEach((id) => set.add(id));
+    }
+    store.set("syncedOnce", true);
+    saveMarksLocally();
+    setSyncState("ok");
+    render();
+  } catch { setSyncState("error"); }
+}
+
+function setSyncState(s) {
+  syncState = s;
+  const el = $("syncStatus");
+  if (!el) return;
+  el.textContent = { off: "Saved marks stay on this device", ok: "✓ Synced across devices", error: "⚠ Sync failed; marks saved on this device" }[s];
+  el.className = `sync ${s}`;
+}
+
+function pairFromLink() {
+  const m = location.hash.match(/sync=([\w-]+)/);
+  if (!m) return;
+  syncKey = m[1];
+  store.set("syncKey", syncKey);
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
+pairFromLink();
+window.addEventListener("focus", () => pullMarks());
 
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
   document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
@@ -416,6 +482,7 @@ async function init() {
   $("meta").textContent = `${listings.length} listings · updated ${updated.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` +
     (lastVisit ? ` · ${newCount} new since your last visit` : "");
   render();
+  pullMarks();
   // Mark this visit after a short delay so a quick reload doesn't clear the "New" badges.
   setTimeout(() => store.set("lastVisit", data.updatedAt), 60000);
 }
