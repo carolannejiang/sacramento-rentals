@@ -357,7 +357,7 @@ function saveMarksLocally() {
 async function syncRequest(body) {
   const r = await fetch(SYNC_URL, {
     method: body ? "POST" : "GET",
-    headers: { "x-sync-key": syncKey, ...(body ? { "content-type": "application/json" } : {}) },
+    headers: { "x-sync-key": encodeURIComponent(syncKey), ...(body ? { "content-type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!r.ok) throw new Error(`sync ${r.status}`);
@@ -384,21 +384,61 @@ async function pullMarks() {
     saveMarksLocally();
     setSyncState("ok");
     render();
-  } catch { setSyncState("error"); }
+  } catch (e) { setSyncState(String(e.message).includes("401") ? "bad" : "error"); }
 }
 
 function setSyncState(s) {
   syncState = s;
   const el = $("syncStatus");
   if (!el) return;
-  el.textContent = { off: "Saved marks stay on this device", ok: "✓ Synced across devices", error: "⚠ Sync failed; marks saved on this device" }[s];
+  el.textContent = {
+    off: "Saved marks stay on this device",
+    ok: "✓ Synced across devices",
+    bad: "Wrong passcode",
+    error: "⚠ Sync failed; marks saved on this device",
+  }[s];
   el.className = `sync ${s}`;
+  $("syncBtn").textContent = s === "ok" ? "Sign out" : "Enter passcode";
 }
 
+// The passcode is checked by /api/marks and remembered in this browser.
+async function unlock(code) {
+  syncKey = code;
+  try {
+    await syncRequest();
+    store.set("syncKey", code);
+    await pullMarks();
+  } catch (e) {
+    syncKey = store.get("syncKey", null);
+    setSyncState(String(e.message).includes("401") ? "bad" : "error");
+  }
+}
+
+$("syncBtn").addEventListener("click", () => {
+  if (syncState === "ok") {
+    syncKey = null;
+    store.set("syncKey", null);
+    setSyncState("off");
+    return;
+  }
+  $("syncForm").hidden = false;
+  $("syncInput").focus();
+});
+$("syncCancel").addEventListener("click", () => { $("syncForm").hidden = true; });
+$("syncForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = $("syncInput").value.trim();
+  if (!code) return;
+  $("syncForm").hidden = true;
+  $("syncInput").value = "";
+  await unlock(code);
+});
+
+// Old pairing links (#sync=...) still work.
 function pairFromLink() {
-  const m = location.hash.match(/sync=([\w-]+)/);
+  const m = location.hash.match(/sync=([^&]+)/);
   if (!m) return;
-  syncKey = m[1];
+  syncKey = decodeURIComponent(m[1]);
   store.set("syncKey", syncKey);
   history.replaceState(null, "", location.pathname + location.search);
 }
