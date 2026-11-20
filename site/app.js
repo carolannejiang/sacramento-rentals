@@ -170,13 +170,14 @@ function card(x) {
     ...(x.scamFlags || []).map((f) => `<span class="badge warn">⚠ ${esc(f)}</span>`),
   ].filter(Boolean).join("");
   const n = x.photos?.length || 0;
+  const pi = Math.min(photoIndex.get(x.id) || 0, Math.max(0, n - 1));
   const photo = n
-    ? `<div class="gallery" data-i="0">
+    ? `<div class="gallery" data-i="${pi}">
         <span class="nophoto-text">Photo unavailable</span>
-        <img class="photo" loading="lazy" src="${esc(x.photos[0])}" alt="" data-act="zoom" onerror="this.classList.add('broken')">
+        <img class="photo" loading="lazy" src="${esc(x.photos[pi])}" alt="" data-act="zoom" onerror="this.classList.add('broken')">
         ${n > 1 ? `<button class="nav prev" data-act="prev" aria-label="Previous photo">‹</button>
           <button class="nav next" data-act="next" aria-label="Next photo">›</button>
-          <span class="pcount">1/${n}</span>` : ""}
+          <span class="pcount">${pi + 1}/${n}</span>` : ""}
       </div>`
     : `<div class="photo nophoto">No photo</div>`;
   // A few key features up front; every feature, grouped, when the card is expanded.
@@ -231,7 +232,7 @@ function card(x) {
 
 function render() {
   const rows = filtered();
-  $("count").textContent = `${rows.length} listing${rows.length === 1 ? "" : "s"}`;
+  $("count").innerHTML = `${rows.length} listing${rows.length === 1 ? "" : "s"}<span class="keys"> · Keys: ↑↓ listing · ←→ photos · S star · X hide</span>`;
   $("list").innerHTML = rows.slice(0, 400).map(card).join("") + (rows.length > 400 ? `<li class="count">Showing first 400 — narrow the filters to see more.</li>` : "");
   $("favCount").textContent = fav.size ? `(${fav.size})` : "";
   $("hiddenCount").textContent = hidden.size ? `(${hidden.size})` : "";
@@ -247,6 +248,10 @@ function render() {
       .addTo(markers);
     m.source = x.source;
     markerById.set(x.id, m);
+  }
+  if (cardEl(selectedId)) {
+    cardEl(selectedId).classList.add("focus");
+    highlight(selectedId);
   }
 }
 
@@ -322,20 +327,61 @@ function highlight(id) {
 
 // Gaps between cards keep the last highlight, so it doesn't flicker while moving down the list.
 $("list").addEventListener("mouseover", (e) => { const id = e.target.closest(".card")?.dataset.id; if (id) highlight(id); });
-$("list").addEventListener("mouseleave", () => highlight(null));
+$("list").addEventListener("mouseleave", () => highlight(cardEl(selectedId) ? selectedId : null));
 
-function focusCard(id) {
-  const el = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+// ---- the selected listing: set by clicking a card or a map dot, or with the arrow keys ----
+let selectedId = null;
+
+function cardEl(id) { return id && document.querySelector(`.card[data-id="${CSS.escape(id)}"]`); }
+
+function selectCard(id, block = "center") {
+  const el = cardEl(id);
   if (!el) return;
   document.querySelectorAll(".card.focus").forEach((c) => c.classList.remove("focus"));
   el.classList.add("focus");
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  selectedId = id;
+  highlight(id);
+  el.scrollIntoView({ behavior: "smooth", block });
 }
 
+function focusCard(id) { selectCard(id); }
+
+// Keys: ↑/↓ listing · ←/→ (or < >) photos · S star · X hide. Ignored while typing in a field.
+document.addEventListener("keydown", (e) => {
+  if (!$("lightbox").hidden || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.closest?.("input, select, textarea, [contenteditable]")) return;
+  const cards = [...document.querySelectorAll("#list .card")];
+  if (!cards.length) return;
+  const current = cardEl(selectedId) && cards.includes(cardEl(selectedId)) ? cardEl(selectedId) : null;
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (key === "ArrowDown" || key === "ArrowUp") {
+    e.preventDefault();
+    const i = current ? cards.indexOf(current) + (key === "ArrowDown" ? 1 : -1) : 0;
+    selectCard(cards[Math.max(0, Math.min(cards.length - 1, i))].dataset.id, "nearest");
+  } else if (["ArrowLeft", "ArrowRight", ",", ".", "<", ">"].includes(key)) {
+    const target = current || cards[0];
+    if (!current) selectCard(target.dataset.id, "nearest");
+    const nav = target.querySelector(["ArrowRight", ".", ">"].includes(key) ? ".gallery .next" : ".gallery .prev");
+    if (nav) { e.preventDefault(); nav.click(); }
+  } else if ((key === "s" || key === "x") && current) {
+    e.preventDefault();
+    const id = current.dataset.id;
+    const next = cards[cards.indexOf(current) + 1] || cards[cards.indexOf(current) - 1];
+    current.querySelector(key === "s" ? '[data-act="fav"]' : '[data-act="hide"]').click();
+    // Hiding removes the card from the list, so move on to the next one.
+    if (key === "x" && !cardEl(id) && next) selectCard(next.dataset.id, "nearest");
+    else selectCard(id, "nearest");
+  }
+});
+
 // ---- photos: arrows on each card, and a full-size viewer ----
+// Which photo each listing is on, so starring or hiding (which redraws the list) keeps it.
+const photoIndex = new Map();
+
 function showPhoto(galleryEl, photos, i) {
   i = (i + photos.length) % photos.length;
   galleryEl.dataset.i = i;
+  photoIndex.set(galleryEl.closest(".card").dataset.id, i);
   const img = galleryEl.querySelector("img");
   img.classList.remove("broken");
   img.src = photos[i];
@@ -381,8 +427,13 @@ $("lightbox").addEventListener("touchend", (e) => {
 });
 
 $("list").addEventListener("click", (e) => {
+  const clicked = e.target.closest(".card");
+  if (clicked && !e.target.closest("a")) selectedId = clicked.dataset.id;
   const btn = e.target.closest("[data-act]");
-  if (!btn) return;
+  if (!btn) {
+    if (clicked && !e.target.closest("a")) selectCard(clicked.dataset.id, "nearest");
+    return;
+  }
   const cardEl = btn.closest(".card");
   const id = cardEl.dataset.id;
   const act = btn.dataset.act;
