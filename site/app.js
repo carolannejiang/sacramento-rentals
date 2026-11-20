@@ -25,7 +25,6 @@ const lastVisit = store.get("lastVisit", null);
 let map, markers;
 
 function dogsOk(x) {
-  if (x.source === "zillow") return true; // the Zillow search is filtered to small dogs OK
   const p = (x.pets || "").toLowerCase();
   if (!p) return null;
   if (/no (dogs|pets)|dogs? not allowed|pets? not allowed|cats only/.test(p)) return false;
@@ -51,6 +50,7 @@ function filtered() {
     if (view === "hidden") return hidden.has(x.id);
     if (hidden.has(x.id)) return false;
     if (!(x.sources || [x.source]).some((s) => f.sources.includes(s))) return false;
+    if (!inArea(x)) return false;
     if (x.price == null ? !f.noPrice : x.price > f.maxPrice) return false;
     if (f.minBeds > 0 && x.beds != null && x.beds < f.minBeds) return false;
     if (f.homeType !== "any" && !TYPE_GROUPS[f.homeType].includes(x.unitType)) return false;
@@ -299,6 +299,88 @@ function initHeatmap() {
     };
     box.addEventListener("change", apply);
     if (box.checked) apply();
+    return div;
+  };
+  control.addTo(map);
+}
+
+// ---- a hand-drawn area on the map: only listings inside it show ----
+let area = store.get("area", null); // [[lat, lon], ...]
+let areaLayer = null;
+
+// Listings without a known location are left out, since they can't be placed inside the area.
+function inArea(x) {
+  if (!area) return true;
+  if (x.lat == null || x.lon == null) return false;
+  let inside = false;
+  for (let i = 0, j = area.length - 1; i < area.length; j = i++) {
+    const [ai, oi] = area[i], [aj, oj] = area[j];
+    if ((ai > x.lat) !== (aj > x.lat) && x.lon < ((oj - oi) * (x.lat - ai)) / (aj - ai) + oi) inside = !inside;
+  }
+  return inside;
+}
+
+function showArea() {
+  areaLayer?.remove();
+  areaLayer = area && L.polygon(area, { color: "#e8590c", weight: 2, fillOpacity: 0.06, interactive: false }).addTo(map);
+}
+
+function initAreaDraw() {
+  const control = L.control({ position: "topleft" });
+  control.onAdd = () => {
+    const div = L.DomUtil.create("div", "area-control");
+    div.innerHTML = `<button type="button">✏️ Draw area</button><button type="button">✕ Clear area</button>`;
+    L.DomEvent.disableClickPropagation(div);
+    const [drawBtn, clearBtn] = div.querySelectorAll("button");
+    const el = map.getContainer();
+    let drawing = false, line = null, points = [];
+    const setMode = (on) => {
+      drawing = on;
+      el.classList.toggle("drawing", on);
+      on ? map.dragging.disable() : map.dragging.enable();
+      drawBtn.textContent = on ? "✕ Cancel drawing" : "✏️ Draw area";
+      clearBtn.hidden = on || !area;
+      line?.remove();
+      line = null;
+    };
+    const latlng = (e) => map.mouseEventToLatLng(e);
+    el.addEventListener("pointerdown", (e) => {
+      if (!drawing || e.target.closest(".leaflet-control")) return;
+      el.setPointerCapture(e.pointerId);
+      points = [latlng(e)];
+      line = L.polyline(points, { color: "#e8590c", weight: 2 }).addTo(map);
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (!line) return;
+      const p = latlng(e);
+      // Skip points closer than a few pixels to the last one.
+      if (map.latLngToContainerPoint(p).distanceTo(map.latLngToContainerPoint(points[points.length - 1])) < 4) return;
+      points.push(p);
+      line.setLatLngs(points);
+    });
+    el.addEventListener("pointerup", () => {
+      if (!line) return;
+      // A stray click or a straight stroke encloses next to nothing; ignore it.
+      const px = points.map((p) => map.latLngToContainerPoint(p));
+      const size = Math.abs(px.reduce((s, p, i) => s + p.x * px[(i + 1) % px.length].y - px[(i + 1) % px.length].x * p.y, 0)) / 2;
+      if (size > 400) {
+        area = points.map((p) => [+p.lat.toFixed(5), +p.lng.toFixed(5)]);
+        store.set("area", area);
+        showArea();
+        render();
+      }
+      setMode(false);
+    });
+    document.addEventListener("keydown", (e) => { if (drawing && e.key === "Escape") setMode(false); });
+    drawBtn.addEventListener("click", () => setMode(!drawing));
+    clearBtn.addEventListener("click", () => {
+      area = null;
+      store.set("area", null);
+      showArea();
+      setMode(false);
+      render();
+    });
+    setMode(false);
     return div;
   };
   control.addTo(map);
@@ -668,6 +750,8 @@ async function init() {
   window.addEventListener("resize", fitLayout);
   initSplitter();
   initHeatmap();
+  initAreaDraw();
+  showArea();
 
   const data = await fetch("listings.json", { cache: "no-store" }).then((r) => r.json());
   listings = data.listings;

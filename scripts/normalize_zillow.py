@@ -155,7 +155,7 @@ def convert(x, detail):
         "lat": coords.get("latitude"),
         "lon": coords.get("longitude"),
         "moveIn": (x.get("availabilityDate") or "")[:10] or None,
-        "pets": "Small dogs OK (Zillow search filter)",
+        "pets": None,  # from the detail page, below
         # Search results carry small "-p_e" thumbnails; "-cc_ft_960" is the 960px version.
         "photos": [p["url"].replace("-p_e.jpg", "-cc_ft_960.jpg") for p in (x.get("listingPhotos") or [])][:15],
         "description": f"Units: {unit_text}" if unit_text else None,
@@ -180,7 +180,8 @@ def convert(x, detail):
         listing["postedAt"] = datetime.fromtimestamp(reso["onMarketDate"] / 1000, timezone.utc).isoformat()
     pets = listing["features"].get("Pets")
     if pets:
-        listing["pets"] = "; ".join(pets)
+        # Zillow lists only the pets that are allowed, so a list without dogs means no dogs.
+        listing["pets"] = "; ".join(pets) if any("dog" in p.lower() for p in pets) else f"No dogs ({', '.join(pets)} only)"
     if detail.get("description"):
         listing["description"] = ((listing["description"] + "\n\n") if listing["description"] else "") + detail["description"][:1500]
     return listing
