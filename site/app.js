@@ -7,7 +7,7 @@ const store = {
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
 };
 
-const SOURCES = { zillow: "Zillow", craigslist: "Craigslist", facebook: "Facebook" };
+const SOURCES = { zillow: "Zillow", redfin: "Redfin", craigslist: "Craigslist", facebook: "Facebook" };
 const TYPE_LABELS = { apartment: "Apartment", studio: "Studio", house: "House", condo: "Condo", townhouse: "Townhouse", duplex: "Duplex", other: "Other" };
 // Which unitType values each "Home type" filter option covers.
 const TYPE_GROUPS = { apartment: ["apartment", "studio"], house: ["house"], condo: ["condo", "townhouse"], duplex: ["duplex"] };
@@ -108,7 +108,8 @@ function readFilters() {
 function saveFilters() {
   const f = {};
   for (const id of FILTER_IDS) { const el = $(id); f[id] = el.type === "checkbox" ? el.checked : el.value; }
-  f.sources = readFilters().sources;
+  // Save the unticked sources, so a source added later starts ticked.
+  f.offSources = Object.keys(SOURCES).filter((s) => !readFilters().sources.includes(s));
   store.set("filters", f);
 }
 
@@ -120,7 +121,9 @@ function restoreFilters() {
     if (!(id in f) || !el) continue;
     if (el.type === "checkbox") el.checked = f[id]; else el.value = f[id];
   }
-  document.querySelectorAll("#sources input").forEach((i) => { i.checked = !f.sources || f.sources.includes(i.value); });
+  // Filters saved before Redfin was added list the ticked sources instead.
+  const off = f.offSources ?? ["zillow", "craigslist", "facebook"].filter((s) => f.sources && !f.sources.includes(s));
+  document.querySelectorAll("#sources input").forEach((i) => { i.checked = !off.includes(i.value); });
 }
 
 function ago(iso) {

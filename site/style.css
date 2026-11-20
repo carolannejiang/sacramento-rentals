@@ -1,7 +1,7 @@
 :root {
   --bg: #f6f5f2; --card: #fff; --text: #1d1d1b; --muted: #6b6a66; --line: #e3e1db;
   --accent: #1f6f5c; --accent-soft: #e2f0eb; --warn: #9a3412; --warn-soft: #fdecdf; --new: #2f5fd0;
-  --facebook: #3b5bdb; --craigslist: #7048e8; --zillow: #1c7ed6;
+  --facebook: #3b5bdb; --craigslist: #7048e8; --zillow: #1c7ed6; --redfin: #c92a2a;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -125,6 +125,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .badge.src-facebook { background: color-mix(in srgb, var(--facebook) 15%, transparent); color: var(--facebook); }
 .badge.src-craigslist { background: color-mix(in srgb, var(--craigslist) 15%, transparent); color: var(--craigslist); }
 .badge.src-zillow { background: color-mix(in srgb, var(--zillow) 15%, transparent); color: var(--zillow); }
+.badge.src-redfin { background: color-mix(in srgb, var(--redfin) 15%, transparent); color: var(--redfin); }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.new { background: var(--new); color: #fff; }
 .badge.messaged { background: var(--accent); color: #fff; }

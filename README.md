@@ -1,6 +1,6 @@
 # Sacramento Rentals
 
-Personal apartment-hunt aggregator. Pulls whole-unit rentals from Craigslist, Zillow and
+Personal apartment-hunt aggregator. Pulls whole-unit rentals from Craigslist, Zillow, Redfin and
 Sacramento Facebook housing groups into one filterable page with a map. A GitHub Actions
 workflow refreshes it every 6 hours and publishes `site/` to GitHub Pages and Vercel
 (https://sacramento-rentals.vercel.app).
@@ -12,6 +12,7 @@ workflow refreshes it every 6 hours and publishes `site/` to GitHub Pages and Ve
 | Craigslist | Search API split into price bands + detail pages (`scripts/craigslist/`) | every run |
 | Facebook groups (`sources/facebook_groups.json`) | Apify `apify/facebook-groups-scraper`, then Claude sorts posts (`parse_facebook.py`) | every run, last 8 hours |
 | Zillow (`sources/zillow_searches.json`) | Apify `maxcopell/zillow-scraper`; features from `maxcopell/zillow-detail-scraper` for new listings only | every 3 days |
+| Redfin (all Sacramento city rentals) | Redfin's search API + amenities/floor plans for new listings (`fetch_redfin.py`); its Zillow-fed copies fold into Zillow | every run |
 
 Walkability comes from OpenStreetMap shops, restaurants, groceries, parks and transit
 (`fetch_places.py`, weekly; scored in `walkability.py`).

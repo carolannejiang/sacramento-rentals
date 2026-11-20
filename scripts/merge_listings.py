@@ -31,7 +31,7 @@ def richness(x):
 # ---- the same unit listed on more than one platform ----
 # Pick the copy to show by source (most structured first) so a listing's id, and with it
 # the viewer's saved/hidden state, stays stable between runs.
-SOURCE_RANK = {"zillow": 0, "craigslist": 1, "facebook": 2}
+SOURCE_RANK = {"zillow": 0, "redfin": 1, "craigslist": 2, "facebook": 3}
 
 
 def address_key(addr):

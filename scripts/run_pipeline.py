@@ -3,6 +3,7 @@
 A failed step is reported and skipped; the previous data for that source is kept.
 Usage: python scripts/run_pipeline.py [--force-zillow]
 Env: CL_DETAIL_LIMIT caps new Craigslist detail pages fetched per run (default 300, ~1 per second).
+     REDFIN_DETAIL_LIMIT caps new Redfin amenity/floor-plan lookups per run (default 300, ~1.2 seconds each).
 """
 import os
 import subprocess
@@ -53,6 +54,10 @@ def main():
         failed.append("zillow details")
     if not run("Zillow normalize", "scripts/normalize_zillow.py"):
         failed.append("zillow")
+
+    if not (run("Redfin pull", "-I", "scripts/fetch_redfin.py", os.environ.get("REDFIN_DETAIL_LIMIT") or "300")
+            and run("Redfin normalize", "scripts/normalize_redfin.py")):
+        failed.append("redfin")
 
     # Shops, restaurants, groceries, parks and transit for walkability; they change slowly.
     places = ROOT / "data/raw/places.json"
