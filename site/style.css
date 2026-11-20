@@ -103,6 +103,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .where { color: var(--muted); font-size: 13px; margin: 0; }
 .drive { font-size: 13px; margin: 3px 0 0; }
 .walk { font-size: 13px; margin: 3px 0 0; }
+.area { font-size: 13px; margin: 3px 0 0; }
 .walk b { font-weight: 600; }
 .walk-very { color: #15803d; }
 .walk-walkable { color: #4d7c0f; }
@@ -131,6 +132,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .badge.src-craigslist { background: color-mix(in srgb, var(--craigslist) 15%, transparent); color: var(--craigslist); }
 .badge.src-zillow { background: color-mix(in srgb, var(--zillow) 15%, transparent); color: var(--zillow); }
 .badge.src-redfin { background: color-mix(in srgb, var(--redfin) 15%, transparent); color: var(--redfin); }
+a.badge { text-decoration: none; font-weight: 600; }
+a.badge:hover { text-decoration: underline; }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.new { background: var(--new); color: #fff; }
 .badge.messaged { background: var(--accent); color: #fff; }

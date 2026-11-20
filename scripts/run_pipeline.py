@@ -16,6 +16,7 @@ PY = sys.executable
 ZILLOW_EVERY_DAYS = 3  # a full Zillow pull costs ~$0.70 on Apify
 FACEBOOK_WINDOW = "8 hours"  # the schedule runs every 6 hours; the overlap catches late posts
 PLACES_EVERY_DAYS = 7
+CENSUS_EVERY_DAYS = 30  # new ACS estimates come out once a year
 CL_SEARCH, CL_DETAILS = "data/raw/craigslist_search", "data/raw/craigslist_details"
 
 
@@ -65,8 +66,16 @@ def main():
         if not run("Places (OpenStreetMap)", "scripts/fetch_places.py"):
             failed.append("places")
 
+    # Income and degrees by census tract.
+    census = ROOT / "data/raw/census_tracts.json"
+    if not census.exists() or time.time() - census.stat().st_mtime > CENSUS_EVERY_DAYS * 86400:
+        if not run("Census tracts (Census Reporter)", "scripts/fetch_census.py"):
+            failed.append("census")
+
     if not run("Who posted (Craigslist/Facebook)", "scripts/classify_lister.py"):
         failed.append("lister classification")
+    if not run("Places named by listings without an address", "scripts/place_hints.py"):
+        failed.append("place hints")
 
     if not run("Merge", "scripts/merge_listings.py"):
         sys.exit(1)

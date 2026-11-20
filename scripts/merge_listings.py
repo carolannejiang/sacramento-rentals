@@ -5,7 +5,8 @@
   and (outside Facebook) same title. The kept record gets `alsoAt`: [{group, url}].
 - Records when each listing was first seen (data/state.json) so the site can mark new ones.
 - Adds map positions from addresses and drive times to sources/destinations.json (commute.py),
-  and what's within walking distance (walkability.py).
+  what's within walking distance (walkability.py), and neighborhood income, degrees and
+  rent per sqft (area_stats.py).
 """
 import json
 import math
@@ -13,6 +14,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from area_stats import add_area_stats
+from approx_area import add_approx_areas
 from commute import add_commutes, geocode_missing
 from walkability import add_walkability
 
@@ -197,13 +200,15 @@ def main():
     geocode_missing(list(merged.values()))
     combined = merge_across_sources(list(merged.values()))
     print(f"Folded {len(merged) - len(combined)} reposts and cross-platform copies into the same unit")
+    add_approx_areas(combined)
     destinations = add_commutes(combined)
     add_walkability(combined)
+    census = add_area_stats(combined)
     out = sorted(combined, key=lambda x: x.get("postedAt") or x["firstSeen"], reverse=True)
     (ROOT / "data/all_listings.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))
     (ROOT / "site").mkdir(exist_ok=True)
     (ROOT / "site/listings.json").write_text(json.dumps(
-        {"updatedAt": now, "destinations": destinations, "listings": [public(x) for x in out]}, ensure_ascii=False))
+        {"updatedAt": now, "destinations": destinations, "census": census, "listings": [public(x) for x in out]}, ensure_ascii=False))
 
     by_source = {}
     for x in out:

@@ -16,6 +16,7 @@ const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "listedBy", "m
 
 let listings = [];
 let destinations = [];
+let censusRelease = null;
 let byId = new Map();
 let view = "all";
 let fav = new Set(store.get("fav", []));
@@ -141,6 +142,22 @@ function walkClass(score) {
   return score >= 70 ? "very" : score >= 50 ? "walkable" : score >= 25 ? "somewhat" : "car";
 }
 
+// Census tract income and degrees, and how this rent per sqft compares with listings nearby.
+function areaLine(x) {
+  const a = x.area;
+  if (!a) return "";
+  const own = x.price && x.sqft ? x.price / x.sqft : null;
+  const parts = [
+    a.income != null && `$${Math.round(a.income / 1000)}k median household income`,
+    a.bachelorsPct != null && `${a.bachelorsPct}% bachelor's+`,
+    a.rentPsf != null ? `rent $${a.rentPsf.toFixed(2)}/sqft nearby${own ? ` (this one $${own.toFixed(2)})` : ""}`
+      : own && `rent $${own.toFixed(2)}/sqft`,
+  ].filter(Boolean);
+  const title = [a.tract && `${a.tract}, ${censusRelease || "American Community Survey"}`,
+    a.rentPsf != null && `Nearby rent: median of ${a.rentComps} current listings within half a mile`].filter(Boolean).join(". ");
+  return parts.length ? `<p class="area" title="${esc(title)}">🏘 ${parts.join(" · ")}</p>` : "";
+}
+
 function money(n) { return n == null ? "Price not listed" : "$" + Math.round(n).toLocaleString() + "/mo"; }
 
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
@@ -163,7 +180,13 @@ function card(x) {
     whoMarked("messaged", x.id).length && `<span class="badge messaged">✉ Contacted: ${esc(whoMarked("messaged", x.id).join(", "))}</span>`,
     whoMarked("fav", x.id).filter((n) => n !== "You").length &&
       `<span class="badge saved-by">★ ${esc(whoMarked("fav", x.id).filter((n) => n !== "You").join(", "))}</span>`,
-    ...(x.sources || [x.source]).map((s) => `<span class="badge src-${s}">${SOURCES[s] || s}${s === x.source && x.group ? " · " + esc(x.group.split(/[|,]/)[0].trim()) : ""}</span>`),
+    // Each platform badge opens the listing on that platform.
+    ...(x.sources || [x.source]).map((s) => {
+      const url = s === x.source ? x.url : x.alsoAt?.find((c) => c.source === s)?.url;
+      const text = `${SOURCES[s] || s}${s === x.source && x.group ? " · " + esc(x.group.split(/[|,]/)[0].trim()) : ""}`;
+      return url ? `<a class="badge src-${s}" href="${esc(url)}" target="_blank" rel="noopener" title="Open on ${SOURCES[s] || s}">${text} ↗</a>`
+        : `<span class="badge src-${s}">${text}</span>`;
+    }),
     x.listedBy === "individual" && `<span class="badge lister" title="${esc(x.listerName || "Posted by an owner or tenant")}">👤 Individual</span>`,
     x.listedBy === "company" && `<span class="badge lister">🏢 ${esc(x.listerName || "Property manager")}</span>`,
     dogsOk(x) === true && `<span class="badge">Dogs OK</span>`,
@@ -192,9 +215,7 @@ function card(x) {
   const featureList = Object.entries(feats).map(([g, list]) =>
     `<div><dt>${esc(g)}</dt><dd>${list.map(esc).join(" · ")}</dd></div>`).join("");
   const hasMore = x.description || featureList || x.specialOffer || x.alsoAt?.length;
-  // Other platforms get a link in the action row; repeat posts on the same platform are listed under Details.
-  const otherSources = [...new Map((x.alsoAt || []).filter((c) => c.source && c.source !== x.source).map((c) => [c.source, c])).values()];
-  const copies = otherSources.map((c) => `<a href="${esc(c.url)}" target="_blank" rel="noopener">${SOURCES[c.source]} ↗</a>`).join(" ");
+  // Other platforms are linked from their badges; repeat posts on the same platform are listed under Details.
   const repeats = (x.alsoAt || []).filter((c) => !c.source || c.source === x.source);
   const repeatList = repeats.length
     ? `<p class="repeats">Also posted ${repeats.length} other time${repeats.length > 1 ? "s" : ""}: ${repeats.map((c, i) =>
@@ -212,6 +233,7 @@ function card(x) {
       ${where ? `<p class="where">${esc(where)}</p>` : ""}
       <p class="drive">${drives || "🚗 Location not listed"}</p>
       ${x.walk ? `<p class="walk" title="Within a 10-minute walk: ${x.walk.food} restaurants & cafés, ${x.walk.shops} shops, ${x.walk.parks} parks; ${x.walk.transit} transit stops within 5 minutes">🚶 <b class="walk-${walkClass(x.walk.score)}">${esc(x.walk.label)}</b> (${x.walk.score}) · ${x.walk.amenities} shops & restaurants within 10 min${x.walk.groceryMi != null ? ` · grocery ${x.walk.groceryMi} mi` : ""}</p>` : ""}
+      ${areaLine(x)}
       <div class="badges">${badges}</div>
       ${highlights.length ? `<div class="highlights">${highlights.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
       ${x.description ? `<p class="desc">${esc(x.description)}</p>` : ""}
@@ -226,8 +248,7 @@ function card(x) {
         x.postedAt ? "Posted " + day(x.postedAt) : postedDate(x) ? "First seen " + day(x.firstSeen) : "Post date not listed"}</span>
       <span class="links">
         ${hasMore ? `<button data-act="more">Expand</button>` : ""}
-        ${copies}
-        <a href="${esc(x.url)}" target="_blank" rel="noopener">${x.sources?.length > 1 ? SOURCES[x.source] : "Open listing"} ↗</a>
+        ${x.sources?.length > 1 ? "" : `<a href="${esc(x.url)}" target="_blank" rel="noopener">Open listing ↗</a>`}
       </span>
     </div>
   </li>`;
@@ -778,6 +799,7 @@ async function init() {
 
   // One "max drive" filter, sort option and map pin per destination in the data.
   destinations = data.destinations || [];
+  censusRelease = data.census;
   for (const d of destinations) {
     $("driveFilters").insertAdjacentHTML("beforeend",
       `<label>Max drive to ${esc(d.label)} <input id="drive_${d.id}" type="number" step="5" min="0" placeholder="min"></label>`);

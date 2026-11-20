@@ -21,6 +21,7 @@ ROUTE_CACHE = ROOT / "data/work/route_cache.json"
 UA = "sacramento-rentals/1.0 (github.com/carolannejiang/sacramento-rentals)"
 GEOCODE_PER_RUN = 150
 REGION = (38.2, 39.0, -121.9, -120.9)  # lat min/max, lon min/max around Sacramento
+UNIT = re.compile(r",?\s*(?:#|\b(?:apt|unit|ste|suite)\b\.?)\s*[\w-]+", re.I)
 
 
 def get_json(url):
@@ -50,6 +51,8 @@ def geocode_missing(listings):
         if x.get("lat") is not None or not re.search(r"\d+\s+\w", addr):
             continue
         query = addr if re.search(r"sacramento|, ca\b|california|\d{5}", addr, re.I) else f"{addr}, Sacramento, CA"
+        if cache.get(query, 0) is None:  # not found as written; unit numbers ("APT 335", "#7") often trip it up
+            query = UNIT.sub("", query)
         if query not in cache:
             if looked_up >= GEOCODE_PER_RUN:
                 continue
