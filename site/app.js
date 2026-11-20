@@ -232,7 +232,7 @@ function card(x) {
 
 function render() {
   const rows = filtered();
-  $("count").innerHTML = `${rows.length} listing${rows.length === 1 ? "" : "s"}<span class="keys"> · Keys: ↑↓ listing · ←→ photos · S star · X hide</span>`;
+  $("count").textContent = `${rows.length} listing${rows.length === 1 ? "" : "s"}`;
   $("list").innerHTML = rows.slice(0, 400).map(card).join("") + (rows.length > 400 ? `<li class="count">Showing first 400 — narrow the filters to see more.</li>` : "");
   $("favCount").textContent = fav.size ? `(${fav.size})` : "";
   $("hiddenCount").textContent = hidden.size ? `(${hidden.size})` : "";
@@ -607,6 +607,14 @@ document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("cli
   render();
 }));
 
+// Map and list fill the window between the header and the shortcut bar, whatever their heights.
+function fitLayout() {
+  const root = document.documentElement.style;
+  root.setProperty("--main-top", document.querySelector("main").getBoundingClientRect().top + scrollY + "px");
+  root.setProperty("--keybar-h", ($("keybar").offsetHeight || 0) + "px");
+  map?.invalidateSize();
+}
+
 // ---- drag the bar between map and list to resize them (remembered in this browser) ----
 function setMapWidth(pct) {
   pct = Math.min(75, Math.max(20, pct));
@@ -651,6 +659,10 @@ async function init() {
   map = L.map("map", { scrollWheelZoom: true }).setView([38.5816, -121.4944], 11);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(map);
   markers = L.layerGroup().addTo(map);
+  // The header and filters change height (sign-in form, filters added after data loads).
+  const observer = new ResizeObserver(() => fitLayout());
+  ["header", ".filters", "#keybar"].forEach((sel) => observer.observe(document.querySelector(sel)));
+  window.addEventListener("resize", fitLayout);
   initSplitter();
   initHeatmap();
 
