@@ -17,7 +17,17 @@ from commute import add_commutes, geocode_missing
 from walkability import add_walkability
 
 ROOT = Path(__file__).resolve().parent.parent
-PRIVATE_FIELDS = ("poster", "posterId")
+PRIVATE_FIELDS = ("poster", "posterId", "contact")
+PHONE_OR_EMAIL = re.compile(r"\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b|[\w.+-]+@[\w-]+\.[\w.]+")
+
+
+def public(x):
+    """The listing without who posted it. Facebook posts come from private people, so their
+    phone numbers and emails are also taken out of the text."""
+    out = {k: v for k, v in x.items() if k not in PRIVATE_FIELDS}
+    if "facebook" in (x.get("sources") or [x["source"]]) and out.get("description"):
+        out["description"] = PHONE_OR_EMAIL.sub("[contact removed]", out["description"])
+    return out
 
 
 def norm(s):
@@ -191,9 +201,9 @@ def main():
     add_walkability(combined)
     out = sorted(combined, key=lambda x: x.get("postedAt") or x["firstSeen"], reverse=True)
     (ROOT / "data/all_listings.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))
-    public = [{k: v for k, v in x.items() if k not in PRIVATE_FIELDS} for x in out]
     (ROOT / "site").mkdir(exist_ok=True)
-    (ROOT / "site/listings.json").write_text(json.dumps({"updatedAt": now, "destinations": destinations, "listings": public}, ensure_ascii=False))
+    (ROOT / "site/listings.json").write_text(json.dumps(
+        {"updatedAt": now, "destinations": destinations, "listings": [public(x) for x in out]}, ensure_ascii=False))
 
     by_source = {}
     for x in out:

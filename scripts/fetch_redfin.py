@@ -49,19 +49,34 @@ os.makedirs(DETAILS, exist_ok=True)
 json.dump(homes, open(out, "w"), indent=1, ensure_ascii=False)
 print(f"Saved {len(homes)} rentals ({len(dogs)} allow dogs)")
 
+def details(rid):
+    """{"amenities": ..., "floorPlans": ...}, or None if Redfin is blocking us."""
+    out = {}
+    for part in ("amenities", "floorPlans"):
+        status, body = get(f"{API}/rentals/{rid}/{part}")
+        time.sleep(0.6)
+        if status in ("403", "429"):
+            return None
+        try:
+            out[part] = json.loads(body) if status == "200" else None
+        except ValueError:  # a challenge page instead of JSON
+            return None
+    return out
+
+
+# The search results are already saved, so a block here only delays amenities to a later run.
 fetched = 0
 for h in homes:
     rid = h["rentalExtension"]["rentalId"]
     path = os.path.join(DETAILS, f"{rid}.json")
-    if fetched >= n or os.path.exists(path):
+    if fetched >= n:
+        break
+    if os.path.exists(path):
         continue
-    detail = {}
-    for part in ("amenities", "floorPlans"):
-        status, body = get(f"{API}/rentals/{rid}/{part}")
-        if status in ("403", "429"):
-            sys.exit(f"blocked ({status}) after {fetched} detail fetches; stopping")
-        detail[part] = json.loads(body) if status == "200" else None
-        time.sleep(0.6)
+    detail = details(rid)
+    if detail is None:
+        print(f"blocked after {fetched} detail fetches; the rest wait for the next run")
+        break
     json.dump(detail, open(path, "w"), ensure_ascii=False)
     fetched += 1
 print("fetched details for", fetched)

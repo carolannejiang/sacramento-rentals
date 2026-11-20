@@ -236,7 +236,11 @@ function card(x) {
 function render() {
   const rows = filtered();
   $("count").textContent = `${rows.length} listing${rows.length === 1 ? "" : "s"}`;
-  $("list").innerHTML = rows.slice(0, 400).map(card).join("") + (rows.length > 400 ? `<li class="count">Showing first 400 — narrow the filters to see more.</li>` : "");
+  const shown = rows.slice(0, 400);
+  // A map dot clicked for a listing past the first 400 puts its card at the top.
+  const pinned = pinnedId && !shown.some((x) => x.id === pinnedId) && rows.find((x) => x.id === pinnedId);
+  if (pinned) shown.unshift(pinned);
+  $("list").innerHTML = shown.map(card).join("") + (rows.length > 400 ? `<li class="count">Showing first 400 — narrow the filters to see more.</li>` : "");
   $("favCount").textContent = fav.size ? `(${fav.size})` : "";
   $("hiddenCount").textContent = hidden.size ? `(${hidden.size})` : "";
   $("messagedCount").textContent = messaged.size ? `(${messaged.size})` : "";
@@ -429,7 +433,15 @@ function selectCard(id, block = "center") {
   el.scrollIntoView({ behavior: "smooth", block });
 }
 
-function focusCard(id) { selectCard(id); }
+let pinnedId = null;
+
+function focusCard(id) {
+  if (!cardEl(id)) {
+    pinnedId = id;
+    render();
+  }
+  selectCard(id);
+}
 
 // Keys: ↑/↓ listing · ←/→ (or < >) photos · S star · X hide. Ignored while typing in a field.
 document.addEventListener("keydown", (e) => {
@@ -574,7 +586,12 @@ async function syncRequest(body, creds = account) {
 
 function pushMark(set, id, on) {
   if (!account) return;
-  syncRequest({ set, id, on }).then(() => setSyncState("ok"), () => setSyncState("error"));
+  syncRequest({ set, id, on }).then(() => setSyncState("ok"), () => {
+    // Not saved on the server: undo it here too, so the next sync doesn't silently drop it.
+    on ? markSets()[set].delete(id) : markSets()[set].add(id);
+    setSyncState("error");
+    render();
+  });
 }
 
 async function pullMarks() {

@@ -49,7 +49,7 @@ def convert(h, detail):
         "In the unit": amen.get("unitAmenities") or [],
         "Community": [a for a in amen.get("communityAmenities") or [] if a != "Pet Friendly"],
         "Other": amen.get("otherAmenities") or [],
-        "Pets": ["Dogs allowed"] if h["dogsAllowed"] else ["Pet friendly"] if pet_friendly else [],
+        "Pets": ["Dogs allowed"] if h["dogsAllowed"] else ["Some pets allowed (dogs not confirmed)"] if pet_friendly else [],
         "Lease & fees": fees,
     }
     feed = r.get("feedSource")
@@ -75,7 +75,8 @@ def convert(h, detail):
         "lat": point.get("latitude"),
         "lon": point.get("longitude"),
         "moveIn": (r.get("dateAvailable") or "")[:10] or None,
-        "pets": "Dogs allowed (Redfin filter)" if h["dogsAllowed"] else "Pet friendly" if pet_friendly else None,
+        # "Pet Friendly" without Redfin's dog filter may mean cats only, so dogs stay unknown.
+        "pets": "Dogs allowed (Redfin filter)" if h["dogsAllowed"] else None,
         "photos": photos(r["rentalId"], home.get("photosInfo")),
         "description": "\n\n".join(p for p in (f"Units: {units}" if units else "", text) if p) or None,
         "features": {g: v for g, v in features.items() if v},

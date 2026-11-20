@@ -2,12 +2,14 @@
 
 The scheduled workflow keeps its working data in the GitHub Actions cache; when that cache
 is empty (first run, or evicted) it starts from seed/ instead of re-pulling and re-sorting
-30 days of Facebook posts. Poster names/ids and post text are left out.
+30 days of Facebook posts. Poster names/ids, contact details and raw post text are left out.
 Usage: python3 scripts/make_seed.py
 """
 import json
 import shutil
 from pathlib import Path
+
+from merge_listings import public
 
 ROOT = Path(__file__).resolve().parent.parent
 SEED = ROOT / "seed"
@@ -21,7 +23,7 @@ def main():
     (SEED / "data/work").mkdir(parents=True)
 
     for f in (ROOT / "data/listings").glob("*.json"):
-        rows = [{k: v for k, v in x.items() if k not in ("poster", "posterId")} for x in json.loads(f.read_text())]
+        rows = [public(x) for x in json.loads(f.read_text())]
         (SEED / "data/listings" / f.name).write_text(json.dumps(rows, ensure_ascii=False))
 
     # Only what later runs need from old posts: ids, post time (30-day pruning) and photos.
