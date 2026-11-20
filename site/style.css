@@ -56,21 +56,24 @@ body.resizing { cursor: col-resize; user-select: none; }
 .card { display: grid; grid-template-columns: minmax(180px, 42%) 1fr; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
 .card { position: relative; }
 .card > div { min-width: 0; overflow-wrap: anywhere; }
-.card .top { padding-right: 190px; }
-.corner { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 2; }
-.corner button { font: inherit; font-size: 12px; background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
-.corner button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-.corner .star, .corner .star.on { border: 0; background: none; padding: 0 4px; font-size: 20px; line-height: 1; color: var(--muted); }
-.corner .star.on { color: #e3a008; }
+.corner { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; align-items: center; z-index: 2; }
+/* Plain icons, no frames: star (save), "☐ Contacted", ✕ (hide). */
+.corner button { font: inherit; border: 0; background: none; padding: 2px 4px; color: var(--muted); cursor: pointer; white-space: nowrap; line-height: 1; }
+.corner .star { font-size: 20px; }
+.corner .star.on, .corner .star:hover { color: #e3a008; }
+.corner .check { font-size: 13px; display: flex; align-items: center; gap: 3px; }
+.corner .check .box { font-size: 17px; }
+.corner .check.on, .corner .check:hover { color: var(--accent); }
+.corner .hide { font-size: 16px; }
+.corner .hide:hover { color: var(--warn); }
 
 /* When the list column is narrow (dragged small, or a phone), the photo goes full width on top. */
 @container (max-width: 560px) {
   .card { grid-template-columns: 1fr; }
   .card .top { padding-right: 0; }
-  .corner { top: 16px; right: 16px; }
+  .corner { top: 16px; right: 16px; background: color-mix(in srgb, var(--card) 85%, transparent); border-radius: 999px; padding: 1px 6px; }
 }
-.corner .star:hover { color: #e3a008; }
-.card .top { padding-right: 110px; }
+.card .top { padding-right: 170px; }
 .card.focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .photo { width: 100%; aspect-ratio: 4 / 3; border-radius: 8px; object-fit: cover; background: var(--line); }
 .nophoto { display: grid; place-items: center; color: var(--muted); font-size: 12px; }

@@ -199,7 +199,7 @@ function card(x) {
   return `<li class="card" id="c-${CSS.escape(x.id)}" data-id="${esc(x.id)}">
     <div class="corner">
       <button data-act="fav" class="icon star ${fav.has(x.id) ? "on" : ""}" aria-pressed="${fav.has(x.id)}" aria-label="Save" title="${fav.has(x.id) ? "Saved" : "Save"}">${fav.has(x.id) ? "★" : "☆"}</button>
-      <button data-act="messaged" class="icon check ${messaged.has(x.id) ? "on" : ""}" aria-pressed="${messaged.has(x.id)}" aria-label="Contacted" title="${messaged.has(x.id) ? "Contacted" : "Mark as contacted"}">${messaged.has(x.id) ? "☑" : "☐"}</button>
+      <button data-act="messaged" class="icon check ${messaged.has(x.id) ? "on" : ""}" aria-pressed="${messaged.has(x.id)}" title="${messaged.has(x.id) ? "Contacted" : "Mark as contacted"}"><span class="box">${messaged.has(x.id) ? "☑" : "☐"}</span>Contacted</button>
       <button data-act="hide" class="icon hide" aria-label="${hidden.has(x.id) ? "Unhide" : "Hide"}" title="${hidden.has(x.id) ? "Unhide" : "Hide"}">${hidden.has(x.id) ? "↩" : "✕"}</button>
     </div>
     ${photo}
