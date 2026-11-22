@@ -35,6 +35,22 @@ function dogsOk(x) {
 
 function isNew(x) { return lastVisit && x.firstSeen > lastVisit; }
 
+// Each listing's share code: 6 characters from a hash of its id, so it's the same for everyone
+// and says nothing about the original post. Crockford letters (no I, L, O, U) are easy to read out.
+const CODE_CHARS = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+function listingCode(id) {
+  let h = 0x811c9dc5;
+  for (const c of id) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193);
+  let code = "";
+  for (let i = 0; i < 6; i++) { code += CODE_CHARS[h & 31]; h >>>= 5; }
+  return code;
+}
+// What someone typed or pasted, as a code if it is one ("#k7q2mx", "o" for 0, "l" for 1).
+function asCode(s) {
+  const c = String(s).trim().replace(/^#/, "").toUpperCase().replace(/O/g, "0").replace(/[IL]/g, "1");
+  return /^[0-9A-HJKMNP-TV-Z]{6}$/.test(c) ? c : null;
+}
+
 // Best known post date. Some Zillow buildings have none; for those, "first seen" only means
 // something for listings that appeared after the site's first import.
 let importCutoff = "";
@@ -46,7 +62,11 @@ function postedDate(x) {
 function filtered() {
   const f = readFilters();
   const q = f.q.trim().toLowerCase();
+  // Searching a listing's code finds it whatever the other filters or tab.
+  const code = asCode(f.q);
+  const codeHit = code && listings.some((x) => x.code === code);
   let out = listings.filter((x) => {
+    if (codeHit) return x.code === code;
     if (view === "hidden") return hidden.has(x.id);
     // Saved and Contacted show only their own listings, narrowed by the same filters as All.
     if (view === "fav" || view === "messaged") { if (!inMarkedView(view, x.id)) return false; }
@@ -257,6 +277,7 @@ function card(x) {
       <span class="posted" title="${x.postedAt ? "Date the listing was posted" : "The source doesn't give a post date"}">${
         x.postedAt ? "Posted " + day(x.postedAt) : postedDate(x) ? "First seen " + day(x.firstSeen) : "Post date not listed"}</span>
       <span class="links">
+        <button data-act="share" class="share" title="Copy a link to this listing on this site (code ${x.code})">🔗 ${x.code}</button>
         ${hasMore ? `<button data-act="more">Expand</button>` : ""}
         ${x.sources?.length > 1 ? "" : `<a href="${esc(x.url)}" target="_blank" rel="noopener">Open listing ↗</a>`}
       </span>
@@ -267,13 +288,20 @@ function card(x) {
 function render() {
   const rows = filtered();
   const marked = view === "fav" || view === "messaged" ? listings.filter((x) => inMarkedView(view, x.id)).length : null;
-  $("count").textContent = marked != null && marked > rows.length
+  $("count").textContent = (missingCode ? `Listing ${missingCode} is no longer on the site (it may have been rented). ` : "") +
+    (marked != null && marked > rows.length
     ? `${rows.length} of ${marked} ${view === "fav" ? "saved" : "contacted"} listings match the filters`
-    : `${rows.length} listing${rows.length === 1 ? "" : "s"}`;
+    : `${rows.length} listing${rows.length === 1 ? "" : "s"}`);
   const shown = rows.slice(0, 400);
-  // A map dot clicked for a listing past the first 400 puts its card at the top.
-  const pinned = pinnedId && !shown.some((x) => x.id === pinnedId) && rows.find((x) => x.id === pinnedId);
+  // A map dot clicked for a listing past the first 400 puts its card at the top, and so does a
+  // shared link, even when the filters or tab would leave that listing out.
+  const pinned = pinnedId && !shown.some((x) => x.id === pinnedId) &&
+    (rows.find((x) => x.id === pinnedId) || (pinnedId === linkedId && byId.get(pinnedId)));
   if (pinned) shown.unshift(pinned);
+  if (pinned && !rows.includes(pinned)) {
+    rows.push(pinned);
+    $("count").textContent += " · plus the shared listing at the top (outside your filters)";
+  }
   $("list").innerHTML = shown.map(card).join("") + (rows.length > 400 ? `<li class="count">Showing first 400 — narrow the filters to see more.</li>` : "");
   $("favCount").textContent = fav.size ? `(${fav.size})` : "";
   $("hiddenCount").textContent = hidden.size ? `(${hidden.size})` : "";
@@ -487,6 +515,31 @@ function selectCard(id, block = "center") {
 
 let pinnedId = null;
 
+// A shared link (…/#K7Q2MX) opens that listing at the top of the list.
+let linkedId = null;
+let missingCode = null;
+function openLinked() {
+  const code = asCode(decodeURIComponent(location.hash.slice(1)));
+  if (!code) return;
+  const x = listings.find((l) => l.code === code);
+  missingCode = x ? null : code;
+  if (x) linkedId = pinnedId = x.id;
+  render();
+  if (x) selectCard(x.id, "start");
+}
+window.addEventListener("hashchange", openLinked);
+
+async function copyLink(btn, x) {
+  const link = `${location.origin}${location.pathname}#${x.code}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    btn.textContent = "✓ Link copied";
+    setTimeout(() => { btn.textContent = `🔗 ${x.code}`; }, 1500);
+  } catch {
+    prompt("Copy this link:", link);
+  }
+}
+
 function focusCard(id) {
   if (!cardEl(id)) {
     pinnedId = id;
@@ -597,6 +650,7 @@ $("list").addEventListener("click", (e) => {
     btn.textContent = cardEl.classList.toggle("open") ? "Collapse" : "Expand";
     return;
   }
+  if (act === "share") return copyLink(btn, byId.get(id));
   const name = { fav: "fav", hide: "hidden", messaged: "messaged" }[act];
   const set = markSets()[name];
   const on = !set.has(id);
@@ -825,6 +879,7 @@ async function init() {
   const data = await fetch("listings.json", { cache: "no-store" }).then((r) => r.json());
   listings = data.listings;
   byId = new Map(listings.map((x) => [x.id, x]));
+  for (const x of listings) x.code = listingCode(x.id);
   const firstImport = listings.reduce((m, x) => (x.firstSeen < m ? x.firstSeen : m), "9999");
   importCutoff = new Date(new Date(firstImport).getTime() + 864e5).toISOString();
 
@@ -848,12 +903,13 @@ async function init() {
   // Miles step by half a mile, minutes by 5.
   const syncSteps = () => destinations.forEach((d) => { $(`drive_${d.id}`).step = $(`driveUnit_${d.id}`).value === "mi" ? "0.5" : "5"; });
   syncSteps();
-  document.querySelector(".filters").addEventListener("input", () => { syncSteps(); saveFilters(); render(); });
+  document.querySelector(".filters").addEventListener("input", () => { missingCode = null; syncSteps(); saveFilters(); render(); });
   const updated = new Date(data.updatedAt);
   const newCount = listings.filter(isNew).length;
   $("meta").textContent = `${listings.length} listings · updated ${updated.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` +
     (lastVisit ? ` · ${newCount} new since your last visit` : "");
   render();
+  openLinked();
   pullMarks();
   // Mark this visit after a short delay so a quick reload doesn't clear the "New" badges.
   setTimeout(() => store.set("lastVisit", data.updatedAt), 60000);
