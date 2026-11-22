@@ -71,6 +71,11 @@ def main():
     if not census.exists() or time.time() - census.stat().st_mtime > CENSUS_EVERY_DAYS * 86400:
         if not run("Census tracts (Census Reporter)", "scripts/fetch_census.py"):
             failed.append("census")
+    # Asking price per sqft by ZIP code; Realtor.com updates it monthly.
+    asking = ROOT / "data/raw/asking_psf.json"
+    if not asking.exists() or time.time() - asking.stat().st_mtime > PLACES_EVERY_DAYS * 86400:
+        if not run("Asking prices (Realtor.com)", "scripts/fetch_asking_prices.py"):
+            failed.append("asking prices")
 
     if not run("Who posted (Craigslist/Facebook)", "scripts/classify_lister.py"):
         failed.append("lister classification")

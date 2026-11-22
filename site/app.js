@@ -17,6 +17,7 @@ const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "listedBy", "m
 let listings = [];
 let destinations = [];
 let censusRelease = null;
+let askingMonth = null;
 let byId = new Map();
 let view = "all";
 let fav = new Set(store.get("fav", []));
@@ -46,10 +47,10 @@ function filtered() {
   const f = readFilters();
   const q = f.q.trim().toLowerCase();
   let out = listings.filter((x) => {
-    if (view === "fav") return inMarkedView("fav", x.id);
-    if (view === "messaged") return inMarkedView("messaged", x.id);
     if (view === "hidden") return hidden.has(x.id);
-    if (hidden.has(x.id)) return false;
+    // Saved and Contacted show only their own listings, narrowed by the same filters as All.
+    if (view === "fav" || view === "messaged") { if (!inMarkedView(view, x.id)) return false; }
+    else if (hidden.has(x.id)) return false;
     if (!(x.sources || [x.source]).some((s) => f.sources.includes(s))) return false;
     if (!inArea(x)) return false;
     if (x.price == null ? !f.noPrice : x.price > f.maxPrice) return false;
@@ -62,7 +63,8 @@ function filtered() {
     if (f.minSqft && x.sqft && x.sqft < f.minSqft) return false;
     if (f.postedWithin && (!postedDate(x) || Date.now() - new Date(postedDate(x)) > f.postedWithin * 864e5)) return false;
     // Listings without a known location stay visible, like unknown sqft.
-    for (const [id, max] of Object.entries(f.maxDrive)) if (max && x.commute?.[id]?.min > max) return false;
+    // Each distance filter is in drive minutes or road miles (commute.min / commute.mi).
+    for (const [id, { max, unit }] of Object.entries(f.maxDrive)) if (max && x.commute?.[id]?.[unit] > max) return false;
     const d = dogsOk(x);
     if (f.dogs === "yes" && d !== true) return false;
     if (f.dogs === "maybe" && d === false) return false;
@@ -94,7 +96,8 @@ function readFilters() {
     minWalk: Number($("minWalk").value),
     minSqft: Number($("minSqft").value) || 0,
     postedWithin: Number($("postedWithin").value),
-    maxDrive: Object.fromEntries(destinations.map((d) => [d.id, Number($(`drive_${d.id}`)?.value) || 0])),
+    maxDrive: Object.fromEntries(destinations.map((d) => [d.id,
+      { max: Number($(`drive_${d.id}`)?.value) || 0, unit: $(`driveUnit_${d.id}`)?.value || "min" }])),
     dogs: $("dogs").value,
     sort: $("sort").value,
     q: $("q").value,
@@ -142,7 +145,8 @@ function walkClass(score) {
   return score >= 70 ? "very" : score >= 50 ? "walkable" : score >= 25 ? "somewhat" : "car";
 }
 
-// Census tract income and degrees, and how this rent per sqft compares with listings nearby.
+// Census tract income and degrees, the ZIP's asking price per sqft for homes, and how this
+// rent per sqft compares with listings nearby.
 function areaLine(x) {
   const a = x.area;
   if (!a) return "";
@@ -150,10 +154,12 @@ function areaLine(x) {
   const parts = [
     a.income != null && `$${Math.round(a.income / 1000)}k median household income`,
     a.bachelorsPct != null && `${a.bachelorsPct}% bachelor's+`,
+    a.askingPsf != null && `homes asking $${a.askingPsf}/sqft`,
     a.rentPsf != null ? `rent $${a.rentPsf.toFixed(2)}/sqft nearby${own ? ` (this one $${own.toFixed(2)})` : ""}`
       : own && `rent $${own.toFixed(2)}/sqft`,
   ].filter(Boolean);
   const title = [a.tract && `${a.tract}, ${censusRelease || "American Community Survey"}`,
+    a.askingPsf != null && `Homes: median asking (list) price per sqft of ${a.forSale} homes for sale in ${a.zip}, Realtor.com${askingMonth ? ", " + askingMonth : ""}; not sale prices`,
     a.rentPsf != null && `Nearby rent: median of ${a.rentComps} current listings within half a mile`].filter(Boolean).join(". ");
   return parts.length ? `<p class="area" title="${esc(title)}">🏘 ${parts.join(" · ")}</p>` : "";
 }
@@ -231,7 +237,9 @@ function card(x) {
       <div class="top"><span class="price">${money(x.price)}</span><span class="specs">${specs}</span></div>
       <p class="title">${esc(x.title)}</p>
       ${where ? `<p class="where">${esc(where)}</p>` : ""}
-      <p class="drive">${drives || "🚗 Location not listed"}</p>
+      <p class="drive">${drives || (x.approxArea
+        ? `📍 Exact location not listed · roughly <b>${esc(x.approxArea.label)}</b> (outlined on the map)`
+        : "🚗 Location not listed")}</p>
       ${x.walk ? `<p class="walk" title="Within a 10-minute walk: ${x.walk.food} restaurants & cafés, ${x.walk.shops} shops, ${x.walk.parks} parks; ${x.walk.transit} transit stops within 5 minutes">🚶 <b class="walk-${walkClass(x.walk.score)}">${esc(x.walk.label)}</b> (${x.walk.score}) · ${x.walk.amenities} shops & restaurants within 10 min${x.walk.groceryMi != null ? ` · grocery ${x.walk.groceryMi} mi` : ""}</p>` : ""}
       ${areaLine(x)}
       <div class="badges">${badges}</div>
@@ -256,7 +264,10 @@ function card(x) {
 
 function render() {
   const rows = filtered();
-  $("count").textContent = `${rows.length} listing${rows.length === 1 ? "" : "s"}`;
+  const marked = view === "fav" || view === "messaged" ? listings.filter((x) => inMarkedView(view, x.id)).length : null;
+  $("count").textContent = marked != null && marked > rows.length
+    ? `${rows.length} of ${marked} ${view === "fav" ? "saved" : "contacted"} listings match the filters`
+    : `${rows.length} listing${rows.length === 1 ? "" : "s"}`;
   const shown = rows.slice(0, 400);
   // A map dot clicked for a listing past the first 400 puts its card at the top.
   const pinned = pinnedId && !shown.some((x) => x.id === pinnedId) && rows.find((x) => x.id === pinnedId);
@@ -269,12 +280,15 @@ function render() {
   markerById.clear();
   hovered = null;
   for (const x of rows) {
-    if (x.lat == null || x.lon == null) continue;
-    const m = L.circleMarker([x.lat, x.lon], dotStyle(x.source))
-      .bindTooltip(`${money(x.price)} · ${esc(x.title)}`)
+    // No exact position: a hollow ring at the middle of the general area the listing describes.
+    const at = x.lat != null && x.lon != null ? [x.lat, x.lon] : x.approxArea?.center;
+    if (!at) continue;
+    const m = L.circleMarker(at, dotStyle(x.source, x.approxArea))
+      .bindTooltip(`${money(x.price)} · ${esc(x.title)}${x.lat == null ? ` · roughly ${esc(x.approxArea.label)}` : ""}`)
       .on("click", () => focusCard(x.id))
       .addTo(markers);
     m.source = x.source;
+    if (x.lat == null) m.approx = x.approxArea;
     markerById.set(x.id, m);
   }
   if (cardEl(selectedId)) {
@@ -415,9 +429,20 @@ function initAreaDraw() {
 const markerById = new Map();
 let hovered = null;
 
-function dotStyle(source) {
+function dotStyle(source, approx) {
   const color = getComputedStyle(document.documentElement).getPropertyValue(`--${source}`).trim() || "#1f6f5c";
-  return { radius: 6, weight: 1, color: "#fff", fillColor: color, fillOpacity: 0.9 };
+  return approx ? { radius: 6, weight: 2.5, color, fillColor: "#fff", fillOpacity: 0.9 }
+    : { radius: 6, weight: 1, color: "#fff", fillColor: color, fillOpacity: 0.9 };
+}
+
+// The general area of a highlighted listing that has no exact position.
+let approxLayer = null;
+
+function approxShape(a) {
+  const style = { color: "#e8590c", weight: 2, dashArray: "6 4", fillOpacity: 0.12, interactive: false };
+  if (a.polygon) return L.polygon(a.polygon, style);
+  if (a.lines) return L.polyline(a.lines, { color: "#e8590c", weight: 12, opacity: 0.45, lineCap: "round", interactive: false });
+  return L.circle(a.center, { ...style, radius: a.radius });
 }
 
 function highlight(id) {
@@ -425,13 +450,17 @@ function highlight(id) {
   hovered = id;
   const target = id && markerById.get(id);
   for (const m of markerById.values()) {
-    m.setStyle(!target ? dotStyle(m.source)
+    m.setStyle(!target ? dotStyle(m.source, m.approx)
       : m === target ? { radius: 10, weight: 3, color: "#fff", fillColor: "#e8590c", fillOpacity: 1 }
       : { radius: 5, weight: 0, fillColor: "#9a9a96", fillOpacity: 0.25 });
   }
+  approxLayer?.remove();
+  approxLayer = target?.approx ? approxShape(target.approx).addTo(map) : null;
   if (target) {
     target.bringToFront();
-    if (!map.getBounds().pad(-0.05).contains(target.getLatLng())) map.panTo(target.getLatLng());
+    // Show the whole area, zooming out if it doesn't fit but never zooming in.
+    const bounds = approxLayer ? approxLayer.getBounds() : L.latLngBounds([target.getLatLng()]);
+    if (!map.getBounds().pad(-0.05).contains(bounds)) map.fitBounds(bounds, { maxZoom: map.getZoom(), padding: [30, 30] });
   }
 }
 
@@ -797,20 +826,27 @@ async function init() {
   const firstImport = listings.reduce((m, x) => (x.firstSeen < m ? x.firstSeen : m), "9999");
   importCutoff = new Date(new Date(firstImport).getTime() + 864e5).toISOString();
 
-  // One "max drive" filter, sort option and map pin per destination in the data.
+  // One "max distance" filter (drive minutes or miles), sort option and map pin per destination in the data.
   destinations = data.destinations || [];
   censusRelease = data.census;
+  askingMonth = data.askingMonth;
   for (const d of destinations) {
     $("driveFilters").insertAdjacentHTML("beforeend",
-      `<label>Max drive to ${esc(d.label)} <input id="drive_${d.id}" type="number" step="5" min="0" placeholder="min"></label>`);
+      `<label>Max to ${esc(d.label)} <span class="dist">
+        <input id="drive_${d.id}" type="number" step="5" min="0" placeholder="Any">
+        <select id="driveUnit_${d.id}" aria-label="Unit for distance to ${esc(d.label)}"><option value="min">min drive</option><option value="mi">miles</option></select>
+      </span></label>`);
     $("sort").insertAdjacentHTML("beforeend", `<option value="drive_${d.id}">Closest to ${esc(d.label)}</option>`);
-    FILTER_IDS.push(`drive_${d.id}`);
+    FILTER_IDS.push(`drive_${d.id}`, `driveUnit_${d.id}`);
     L.marker([d.lat, d.lon], { title: d.name, zIndexOffset: 1000 })
       .bindTooltip(`★ ${esc(d.label)}`, { permanent: true, direction: "top", offset: [-15, -12] })
       .addTo(map);
   }
   restoreFilters();
-  document.querySelector(".filters").addEventListener("input", () => { saveFilters(); render(); });
+  // Miles step by half a mile, minutes by 5.
+  const syncSteps = () => destinations.forEach((d) => { $(`drive_${d.id}`).step = $(`driveUnit_${d.id}`).value === "mi" ? "0.5" : "5"; });
+  syncSteps();
+  document.querySelector(".filters").addEventListener("input", () => { syncSteps(); saveFilters(); render(); });
   const updated = new Date(data.updatedAt);
   const newCount = listings.filter(isNew).length;
   $("meta").textContent = `${listings.length} listings · updated ${updated.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` +

@@ -124,7 +124,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .heat-legend i { width: 60px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #fde2b6, #f8b26a, #ef7d3c, #c2410c); }
 .drive b { font-weight: 600; }
 .drive-filters { display: contents; }
-.drive-filters input { width: 110px; }
+.drive-filters .dist { display: flex; gap: 4px; }
+.drive-filters input { width: 70px; }
 .leaflet-tooltip { font-weight: 600; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
 .badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }

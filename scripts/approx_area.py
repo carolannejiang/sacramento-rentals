@@ -63,7 +63,15 @@ def nominatim(**params):
     return hits
 
 
+overpass_down = False
+
+
 def overpass(query):
+    """Elements for an Overpass query. After one total failure the rest of the run skips Overpass
+    (busy public servers can take minutes to time out); those lookups retry next run."""
+    global overpass_down
+    if overpass_down:
+        raise RuntimeError("Overpass unavailable this run")
     try:
         import certifi, ssl
         ctx = ssl.create_default_context(cafile=certifi.where())
@@ -72,10 +80,11 @@ def overpass(query):
     for server in OVERPASS:
         try:
             req = urllib.request.Request(server, data=urllib.parse.urlencode({"data": query}).encode(), headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=90, context=ctx) as r:
+            with urllib.request.urlopen(req, timeout=45, context=ctx) as r:
                 return json.load(r)["elements"]
         except (urllib.error.URLError, TimeoutError, ValueError) as e:
             print(f"  {server} failed ({e})")
+    overpass_down = True
     # Raised rather than returned so a busy server isn't cached as "not found".
     raise RuntimeError("all Overpass servers failed")
 

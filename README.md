@@ -15,7 +15,16 @@ workflow refreshes it every 6 hours and publishes `site/` to GitHub Pages and Ve
 | Redfin (all Sacramento city rentals) | Redfin's search API + amenities/floor plans for new listings (`fetch_redfin.py`); its Zillow-fed copies fold into Zillow | every run |
 
 Walkability comes from OpenStreetMap shops, restaurants, groceries, parks and transit
-(`fetch_places.py`, weekly; scored in `walkability.py`).
+(`fetch_places.py`, weekly; scored in `walkability.py`). Median household income and the share
+of adults with a bachelor's degree come from the census tract each address is in (Census
+Reporter, `fetch_census.py`, monthly); the median asking price per sqft of homes for sale comes
+from the ZIP code (Realtor.com research data, `fetch_asking_prices.py`, weekly); rent per sqft is
+compared with current listings within half a mile (`area_stats.py`).
+
+Listings with no usable address (mostly Facebook) get an approximate area instead: Claude names
+the places a post mentions — cross streets, a street, a nearby school or complex, a neighborhood,
+a ZIP (`place_hints.py`) — and the first one OpenStreetMap can find is outlined on the map
+(`approx_area.py`).
 
 `merge_listings.py` drops shared rooms and rented posts, collapses cross-posts, and writes
 `site/listings.json` (poster names removed).
