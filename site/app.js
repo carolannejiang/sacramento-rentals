@@ -63,7 +63,7 @@ function filtered() {
     if (f.minSqft && x.sqft && x.sqft < f.minSqft) return false;
     if (f.postedWithin && (!postedDate(x) || Date.now() - new Date(postedDate(x)) > f.postedWithin * 864e5)) return false;
     // Listings without a known location stay visible, like unknown sqft.
-    // Each distance filter is in drive minutes or road miles (commute.min / commute.mi).
+    // Each distance filter is in drive minutes, walk minutes or road miles (commute.min / walkMin / mi).
     for (const [id, { max, unit }] of Object.entries(f.maxDrive)) if (max && x.commute?.[id]?.[unit] > max) return false;
     const d = dogsOk(x);
     if (f.dogs === "yes" && d !== true) return false;
@@ -179,7 +179,9 @@ function card(x) {
   const drives = x.commute ? destinations.map((d) => {
     const c = x.commute[d.id];
     if (!c) return "";
-    return "🚗 " + (c.straightLine ? `≈${c.mi} mi to ${esc(d.label)}` : `<b>${c.min} min</b> (${c.mi} mi) to ${esc(d.label)}`);
+    // Walking time only where walking there is realistic (an hour or less).
+    const walk = c.walkMin <= 60 ? ` · 🚶 <b>${c.walkMin} min</b> walk (${c.walkMi} mi)` : "";
+    return "🚗 " + (c.straightLine ? `≈${c.mi} mi to ${esc(d.label)}` : `<b>${c.min} min</b> (${c.mi} mi) to ${esc(d.label)}`) + walk;
   }).filter(Boolean).join("<br>") : "";
   const badges = [
     isNew(x) && `<span class="badge new">New</span>`,
@@ -826,7 +828,7 @@ async function init() {
   const firstImport = listings.reduce((m, x) => (x.firstSeen < m ? x.firstSeen : m), "9999");
   importCutoff = new Date(new Date(firstImport).getTime() + 864e5).toISOString();
 
-  // One "max distance" filter (drive minutes or miles), sort option and map pin per destination in the data.
+  // One "max distance" filter (drive minutes, walk minutes where routed, or miles), sort option and map pin per destination in the data.
   destinations = data.destinations || [];
   censusRelease = data.census;
   askingMonth = data.askingMonth;
@@ -834,7 +836,7 @@ async function init() {
     $("driveFilters").insertAdjacentHTML("beforeend",
       `<label>Max to ${esc(d.label)} <span class="dist">
         <input id="drive_${d.id}" type="number" step="5" min="0" placeholder="Any">
-        <select id="driveUnit_${d.id}" aria-label="Unit for distance to ${esc(d.label)}"><option value="min">min drive</option><option value="mi">miles</option></select>
+        <select id="driveUnit_${d.id}" aria-label="Unit for distance to ${esc(d.label)}"><option value="min">min drive</option>${d.walk ? `<option value="walkMin">min walk</option>` : ""}<option value="mi">miles</option></select>
       </span></label>`);
     $("sort").insertAdjacentHTML("beforeend", `<option value="drive_${d.id}">Closest to ${esc(d.label)}</option>`);
     FILTER_IDS.push(`drive_${d.id}`, `driveUnit_${d.id}`);

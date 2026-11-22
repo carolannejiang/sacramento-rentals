@@ -5,6 +5,8 @@
 - add_commutes: driving time and distance from each listing to every place in
   sources/destinations.json, from the public OSRM router (free, no traffic, cached by
   position). Where routing fails, the straight-line distance is used instead.
+  Destinations marked "walk" also get walking time and distance, from the FOSSGIS walking
+  router on routing.openstreetmap.de (OSRM's public server only routes cars).
 Caches live in data/work/ so each listing is only looked up once.
 """
 import json
@@ -18,6 +20,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 GEOCODE_CACHE = ROOT / "data/work/geocode_cache.json"
 ROUTE_CACHE = ROOT / "data/work/route_cache.json"
+WALK_CACHE = ROOT / "data/work/walk_cache.json"
+DRIVE_ROUTER = "https://router.project-osrm.org/table/v1/driving"
+WALK_ROUTER = "https://routing.openstreetmap.de/routed-foot/table/v1/driving"
 UA = "sacramento-rentals/1.0 (github.com/carolannejiang/sacramento-rentals)"
 GEOCODE_PER_RUN = 150
 REGION = (38.2, 39.0, -121.9, -120.9)  # lat min/max, lon min/max around Sacramento
@@ -80,13 +85,18 @@ def straight_miles(a_lat, a_lon, b_lat, b_lon):
     return 3958.8 * 2 * math.asin(math.sqrt(h))
 
 
-def add_commutes(listings):
-    dests = json.loads((ROOT / "sources/destinations.json").read_text())
-    cache = load(ROUTE_CACHE)
+def key(x):
+    return f"{x['lat']:.4f},{x['lon']:.4f}"
+
+
+def route_table(router, dests, path, listings):
+    """[seconds, meters] to each of dests for every listing position, from an OSRM table
+    service, 90 positions per request. Cached by position; returns the cache and how many
+    positions were new."""
+    cache = load(path)
     sig = ";".join(f"{d['lon']},{d['lat']}" for d in dests)
-    if cache.get("_destinations") != sig:  # destinations changed: old drive times are stale
+    if cache.get("_destinations") != sig:  # destinations changed: old routes are stale
         cache = {"_destinations": sig}
-    key = lambda x: f"{x['lat']:.4f},{x['lon']:.4f}"
     todo = sorted({key(x) for x in listings if x.get("lat") is not None and key(x) not in cache})
     for n in range(0, len(todo), 90):
         batch = todo[n:n + 90]
@@ -94,14 +104,22 @@ def add_commutes(listings):
         sources = ";".join(str(i + len(dests)) for i in range(len(batch)))
         targets = ";".join(str(i) for i in range(len(dests)))
         try:
-            r = get_json(f"https://router.project-osrm.org/table/v1/driving/{coords}"
-                         f"?sources={sources}&destinations={targets}&annotations=duration,distance")
+            r = get_json(f"{router}/{coords}?sources={sources}&destinations={targets}&annotations=duration,distance")
             for k, secs, meters in zip(batch, r["durations"], r["distances"]):
                 cache[k] = [[s, m] for s, m in zip(secs, meters)]
         except Exception as e:
             print(f"  routing failed for a batch of {len(batch)}: {e}")
         time.sleep(1)
-    ROUTE_CACHE.write_text(json.dumps(cache))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cache))
+    return cache, len(todo)
+
+
+def add_commutes(listings):
+    dests = json.loads((ROOT / "sources/destinations.json").read_text())
+    cache, new = route_table(DRIVE_ROUTER, dests, ROUTE_CACHE, listings)
+    walk_dests = [d for d in dests if d.get("walk")]
+    walk_cache, new_walks = route_table(WALK_ROUTER, walk_dests, WALK_CACHE, listings) if walk_dests else ({}, 0)
 
     routed = 0
     for x in listings:
@@ -115,6 +133,10 @@ def add_commutes(listings):
                 x["commute"][d["id"]] = {"min": round(legs[i][0] / 60), "mi": round(legs[i][1] / 1609.34, 1)}
             else:
                 x["commute"][d["id"]] = {"mi": round(straight_miles(x["lat"], x["lon"], d["lat"], d["lon"]), 1), "straightLine": True}
+        walks = walk_cache.get(key(x))
+        for i, d in enumerate(walk_dests):
+            if walks and walks[i][0] is not None:
+                x["commute"][d["id"]].update(walkMin=round(walks[i][0] / 60), walkMi=round(walks[i][1] / 1609.34, 1))
         routed += bool(legs)
-    print(f"Drive times for {routed} listings ({len(todo)} new positions routed)")
+    print(f"Drive times for {routed} listings ({new} new positions routed, {new_walks} new walking routes)")
     return dests
