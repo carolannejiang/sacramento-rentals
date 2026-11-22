@@ -71,8 +71,9 @@ function filtered() {
     if (codeHit) return x.code === code;
     if (view === "hidden") return inMarkedView("hidden", x.id);
     // Saved and Contacted show only their own listings, narrowed by the same filters as All.
-    if (view === "fav" || view === "messaged") { if (!inMarkedView(view, x.id)) return false; }
-    else if (isMarked("hidden", x.id)) return false;
+    if ((view === "fav" || view === "messaged") && !inMarkedView(view, x.id)) return false;
+    // Hidden listings leave every tab but Hidden.
+    if (isMarked("hidden", x.id)) return false;
     if (!(x.sources || [x.source]).some((s) => f.sources.includes(s))) return false;
     if (!inArea(x)) return false;
     if (x.price == null ? !f.noPrice : x.price > f.maxPrice) return false;
