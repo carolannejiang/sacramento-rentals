@@ -12,7 +12,7 @@ const TYPE_LABELS = { apartment: "Apartment", studio: "Studio", house: "House", 
 // Which unitType values each "Home type" filter option covers.
 const TYPE_GROUPS = { apartment: ["apartment", "studio"], house: ["house"], condo: ["condo", "townhouse"], duplex: ["duplex"] };
 const HIGHLIGHT_GROUPS = ["Laundry", "Cooling", "Parking", "In the unit", "Appliances", "Community"];
-const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "listedBy", "minWalk", "postedWithin", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged", "hideNoLocation"];
+const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "listedBy", "minWalk", "postedWithin", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged", "hideNoLocation", "hideContacted"];
 
 let listings = [];
 let destinations = [];
@@ -94,6 +94,8 @@ function filtered() {
     if (f.hideFlagged && x.scamFlags?.length) return false;
     // Listings with an approximate area still show; only those with no location at all go.
     if (f.hideNoLocation && x.lat == null && !x.approxArea) return false;
+    // Contacted by anyone in the group (the Contacted tab itself still lists them).
+    if (f.hideContacted && view !== "messaged" && isMarked("messaged", x.id)) return false;
     if (f.newOnly && !isNew(x)) return false;
     if (q && !`${x.title} ${x.neighborhood} ${x.address} ${x.description} ${Object.values(x.features || {}).flat().join(" ")}`.toLowerCase().includes(q)) return false;
     return true;
@@ -130,6 +132,7 @@ function readFilters() {
     hideHotels: $("hideHotels").checked,
     hideFlagged: $("hideFlagged").checked,
     hideNoLocation: $("hideNoLocation").checked,
+    hideContacted: $("hideContacted").checked,
     sources: [...document.querySelectorAll("#sources input:checked")].map((i) => i.value),
   };
 }
