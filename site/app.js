@@ -12,7 +12,7 @@ const TYPE_LABELS = { apartment: "Apartment", studio: "Studio", house: "House", 
 // Which unitType values each "Home type" filter option covers.
 const TYPE_GROUPS = { apartment: ["apartment", "studio"], house: ["house"], condo: ["condo", "townhouse"], duplex: ["duplex"] };
 const HIGHLIGHT_GROUPS = ["Laundry", "Cooling", "Parking", "In the unit", "Appliances", "Community"];
-const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "listedBy", "minWalk", "postedWithin", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged"];
+const FILTER_IDS = ["maxPrice", "minBeds", "homeType", "minSqft", "listedBy", "minWalk", "postedWithin", "dogs", "sort", "q", "newOnly", "noPrice", "hideHotels", "hideFlagged", "hideNoLocation"];
 
 let listings = [];
 let destinations = [];
@@ -23,6 +23,8 @@ let view = "all";
 let fav = new Set(store.get("fav", []));
 let hidden = new Set(store.get("hidden", []));
 let messaged = new Set(store.get("messaged", []));
+let tourScheduled = new Set(store.get("tourScheduled", []));
+let toured = new Set(store.get("toured", []));
 const lastVisit = store.get("lastVisit", null);
 let map, markers;
 
@@ -67,10 +69,10 @@ function filtered() {
   const codeHit = code && listings.some((x) => x.code === code);
   let out = listings.filter((x) => {
     if (codeHit) return x.code === code;
-    if (view === "hidden") return hidden.has(x.id);
+    if (view === "hidden") return inMarkedView("hidden", x.id);
     // Saved and Contacted show only their own listings, narrowed by the same filters as All.
     if (view === "fav" || view === "messaged") { if (!inMarkedView(view, x.id)) return false; }
-    else if (hidden.has(x.id)) return false;
+    else if (isMarked("hidden", x.id)) return false;
     if (!(x.sources || [x.source]).some((s) => f.sources.includes(s))) return false;
     if (!inArea(x)) return false;
     if (x.price == null ? !f.noPrice : x.price > f.maxPrice) return false;
@@ -90,6 +92,8 @@ function filtered() {
     if (f.dogs === "maybe" && d === false) return false;
     if (f.hideHotels && x.weeklyHotel) return false;
     if (f.hideFlagged && x.scamFlags?.length) return false;
+    // Listings with an approximate area still show; only those with no location at all go.
+    if (f.hideNoLocation && x.lat == null && !x.approxArea) return false;
     if (f.newOnly && !isNew(x)) return false;
     if (q && !`${x.title} ${x.neighborhood} ${x.address} ${x.description} ${Object.values(x.features || {}).flat().join(" ")}`.toLowerCase().includes(q)) return false;
     return true;
@@ -125,6 +129,7 @@ function readFilters() {
     noPrice: $("noPrice").checked,
     hideHotels: $("hideHotels").checked,
     hideFlagged: $("hideFlagged").checked,
+    hideNoLocation: $("hideNoLocation").checked,
     sources: [...document.querySelectorAll("#sources input:checked")].map((i) => i.value),
   };
 }
@@ -188,6 +193,12 @@ function money(n) { return n == null ? "Price not listed" : "$" + Math.round(n).
 
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
+// A checkbox for one of the group's marks on a card (Contacted in the corner; the tour ones by the links).
+function checkBtn(act, id, label) {
+  const on = isMarked(act, id);
+  return `<button data-act="${act}" class="icon check ${on ? "on" : ""}" aria-pressed="${on}" title="${on ? label : `Mark as ${label.toLowerCase()}`}"><span class="box">${on ? "☑" : "☐"}</span>${label}</button>`;
+}
+
 function card(x) {
   const specs = [
     x.unitType !== "studio" && x.unitType !== "other" && TYPE_LABELS[x.unitType],
@@ -206,8 +217,11 @@ function card(x) {
   const badges = [
     isNew(x) && `<span class="badge new">New</span>`,
     whoMarked("messaged", x.id).length && `<span class="badge messaged">✉ Contacted: ${esc(whoMarked("messaged", x.id).join(", "))}</span>`,
+    whoMarked("tourScheduled", x.id).length && `<span class="badge messaged">📅 Tour scheduled: ${esc(whoMarked("tourScheduled", x.id).join(", "))}</span>`,
+    whoMarked("toured", x.id).length && `<span class="badge messaged">🏠 Toured: ${esc(whoMarked("toured", x.id).join(", "))}</span>`,
     whoMarked("fav", x.id).filter((n) => n !== "You").length &&
       `<span class="badge saved-by">★ ${esc(whoMarked("fav", x.id).filter((n) => n !== "You").join(", "))}</span>`,
+    whoMarked("hidden", x.id).length && `<span class="badge">✕ Hidden by ${esc(whoMarked("hidden", x.id).join(", "))}</span>`,
     // Each platform badge opens the listing on that platform.
     ...(x.sources || [x.source]).map((s) => {
       const url = s === x.source ? x.url : x.alsoAt?.find((c) => c.source === s)?.url;
@@ -250,9 +264,9 @@ function card(x) {
         `<a href="${esc(c.url)}" target="_blank" rel="noopener">${i + 1}</a>`).join(" ")}</p>` : "";
   return `<li class="card" id="c-${CSS.escape(x.id)}" data-id="${esc(x.id)}">
     <div class="corner">
-      <button data-act="fav" class="icon star ${fav.has(x.id) ? "on" : ""}" aria-pressed="${fav.has(x.id)}" aria-label="Save" title="${fav.has(x.id) ? "Saved" : "Save"}">${fav.has(x.id) ? "★" : "☆"}</button>
-      <button data-act="messaged" class="icon check ${messaged.has(x.id) ? "on" : ""}" aria-pressed="${messaged.has(x.id)}" title="${messaged.has(x.id) ? "Contacted" : "Mark as contacted"}"><span class="box">${messaged.has(x.id) ? "☑" : "☐"}</span>Contacted</button>
-      <button data-act="hide" class="icon hide" aria-label="${hidden.has(x.id) ? "Unhide" : "Hide"}" title="${hidden.has(x.id) ? "Unhide" : "Hide"}">${hidden.has(x.id) ? "↩" : "✕"}</button>
+      <button data-act="fav" class="icon star ${isMarked("fav", x.id) ? "on" : ""}" aria-pressed="${isMarked("fav", x.id)}" aria-label="Save" title="${isMarked("fav", x.id) ? "Saved" : "Save"}">${isMarked("fav", x.id) ? "★" : "☆"}</button>
+      ${checkBtn("messaged", x.id, "Contacted")}
+      <button data-act="hide" class="icon hide" aria-label="${isMarked("hidden", x.id) ? "Unhide" : "Hide"}" title="${isMarked("hidden", x.id) ? "Unhide (for everyone)" : "Hide (for everyone)"}">${isMarked("hidden", x.id) ? "↩" : "✕"}</button>
     </div>
     ${photo}
     <div>
@@ -277,6 +291,8 @@ function card(x) {
       <span class="posted" title="${x.postedAt ? "Date the listing was posted" : "The source doesn't give a post date"}">${
         x.postedAt ? "Posted " + day(x.postedAt) : postedDate(x) ? "First seen " + day(x.firstSeen) : "Post date not listed"}</span>
       <span class="links">
+        ${checkBtn("tourScheduled", x.id, "Tour scheduled")}
+        ${checkBtn("toured", x.id, "Tour completed")}
         <button data-act="share" class="share" title="Copy a link to this listing on this site (code ${x.code})">🔗 ${x.code}</button>
         ${hasMore ? `<button data-act="more">Expand</button>` : ""}
         ${x.sources?.length > 1 ? "" : `<a href="${esc(x.url)}" target="_blank" rel="noopener">Open listing ↗</a>`}
@@ -303,9 +319,10 @@ function render() {
     $("count").textContent += " · plus the shared listing at the top (outside your filters)";
   }
   $("list").innerHTML = shown.map(card).join("") + (rows.length > 400 ? `<li class="count">Showing first 400 — narrow the filters to see more.</li>` : "");
-  $("favCount").textContent = fav.size ? `(${fav.size})` : "";
-  $("hiddenCount").textContent = hidden.size ? `(${hidden.size})` : "";
-  $("messagedCount").textContent = messaged.size ? `(${messaged.size})` : "";
+  for (const [set, el] of [["fav", "favCount"], ["hidden", "hiddenCount"], ["messaged", "messagedCount"]]) {
+    const n = listings.filter((x) => isMarked(set, x.id)).length;
+    $(el).textContent = n ? `(${n})` : "";
+  }
   markers.clearLayers();
   markerById.clear();
   hovered = null;
@@ -651,25 +668,26 @@ $("list").addEventListener("click", (e) => {
     return;
   }
   if (act === "share") return copyLink(btn, byId.get(id));
-  const name = { fav: "fav", hide: "hidden", messaged: "messaged" }[act];
-  const set = markSets()[name];
-  const on = !set.has(id);
-  on ? set.add(id) : set.delete(id);
+  const name = { fav: "fav", hide: "hidden", messaged: "messaged", tourScheduled: "tourScheduled", toured: "toured" }[act];
+  // One shared list: checking adds your name; unchecking clears the mark for everyone.
+  const holders = [markSets()[name], ...Object.values(others).map((p) => p[name])].filter((set) => set.has(id));
+  const on = !holders.length;
+  if (on) markSets()[name].add(id); else holders.forEach((set) => set.delete(id));
   saveMarksLocally();
-  pushMark(name, id, on);
+  pushMark(name, id, on, holders);
   render();
 });
 
-// ---- accounts: marks belong to a name + passcode, and everyone sees each other's saves ----
-// Signed out, marks stay in this browser. Signed in, your marks live on the server under your
-// account (so they follow you to any device), and other people's saved and contacted
-// listings are shown too. Hidden listings are only ever your own.
+// ---- accounts: everyone signs in with a name + the group passcode and shares one list ----
+// Signed out, marks stay in this browser. Signed in, marks live on the server (so they follow
+// you to any device) and the group shares them: everyone sees every saved, contacted, toured
+// and hidden listing with who marked it, and unmarking clears it for everyone.
 const SYNC_URL = "https://sacramento-rentals.vercel.app/api/marks";
 let account = store.get("account", null); // { name, passcode }
 let syncState = "off"; // off | ok | bad | error
-let others = {}; // slug -> { name, fav: Set, messaged: Set }
+let others = {}; // slug -> { name, fav: Set, hidden: Set, messaged: Set, tourScheduled: Set, toured: Set }
 
-function markSets() { return { fav, hidden, messaged }; }
+function markSets() { return { fav, hidden, messaged, tourScheduled, toured }; }
 
 function saveMarksLocally() {
   if (account) return; // signed in: the server is the copy that matters
@@ -690,11 +708,11 @@ async function syncRequest(body, creds = account) {
   return data;
 }
 
-function pushMark(set, id, on) {
+function pushMark(set, id, on, holders) {
   if (!account) return;
   syncRequest({ set, id, on }).then(() => setSyncState("ok"), () => {
     // Not saved on the server: undo it here too, so the next sync doesn't silently drop it.
-    on ? markSets()[set].delete(id) : markSets()[set].add(id);
+    if (on) markSets()[set].delete(id); else holders.forEach((s) => s.add(id));
     setSyncState("error");
     render();
   });
@@ -713,7 +731,7 @@ async function pullMarks() {
     for (const p of data.people) {
       if (p.slug === data.me.slug) continue;
       const m = data.marks[p.slug] || {};
-      others[p.slug] = { name: p.name, fav: new Set(m.fav || []), messaged: new Set(m.messaged || []) };
+      others[p.slug] = { name: p.name, ...Object.fromEntries(Object.keys(markSets()).map((s) => [s, new Set(m[s] || [])])) };
     }
     account.name = data.me.name;
     setSyncState("ok");
@@ -722,14 +740,16 @@ async function pullMarks() {
   } catch (e) { setSyncState(e.status === 401 ? "bad" : "error"); }
 }
 
-// Who saved / contacted a listing, as display names ("You" first).
+// Who marked a listing, as display names ("You" first).
 function whoMarked(set, id) {
   const names = markSets()[set].has(id) ? ["You"] : [];
   for (const p of Object.values(others)) if (p[set]?.has(id)) names.push(p.name);
   return names;
 }
 
-// For the Saved and Contacted tabs: whose marks to show (me, everyone, or one person).
+function isMarked(set, id) { return whoMarked(set, id).length > 0; }
+
+// For the Saved, Contacted and Hidden tabs: whose marks to show (me, everyone, or one person).
 function inMarkedView(set, id) {
   const who = $("markedBy").value;
   if (who === "me" || !account) return markSets()[set].has(id);

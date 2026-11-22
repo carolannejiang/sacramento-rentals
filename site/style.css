@@ -160,6 +160,7 @@ a.badge:hover { text-decoration: underline; }
 .actions .links { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-left: auto; }
 .actions a { color: var(--accent); font-weight: 600; text-decoration: none; }
 .actions button { font: inherit; font-size: 13px; background: none; border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.actions button.check .box { margin-right: 3px; }
 .actions button.share { font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
 .actions button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 

@@ -1,9 +1,10 @@
-// Saved / hidden / contacted marks per person, shared between everyone in the group.
+// Saved / hidden / contacted / tour marks per person, shared between everyone in the group.
 //
 // Everyone signs in with their name plus the group passcode (GROUP_PASSCODE env var). Names
 // ignore case, spaces and punctuation, so "Carol Anne" and "carolanne" are the same account.
-// Each person's saved and contacted listings are visible to the whole group; hidden listings
-// stay private. Storage is a private Vercel Blob store where the data lives in the pathnames:
+// The group shares one list per mark: everyone sees every mark with who made it, and unmarking
+// a listing clears it for everyone (hidden included). Storage is a private Vercel Blob store
+// where the data lives in the pathnames:
 //   users/<slug>/<display name, base64url>
 //   marks/<slug>/<set>/<listing id, base64url>     (empty blob; delete = unmark)
 // so two devices never overwrite each other. Requests carry x-user and x-pass headers
@@ -11,8 +12,7 @@
 import { del, list, put } from "@vercel/blob";
 import { timingSafeEqual } from "node:crypto";
 
-const SETS = ["fav", "hidden", "messaged"];
-const PRIVATE_SETS = ["hidden"];
+const SETS = ["fav", "hidden", "messaged", "tourScheduled", "toured"];
 const ORIGINS = ["https://sacramento-rentals.vercel.app", "https://carolannejiang.github.io"];
 
 const b64 = (s) => Buffer.from(s).toString("base64url");
@@ -88,7 +88,7 @@ export async function GET(request) {
   const marks = Object.fromEntries(people.map((p) => [p.slug, Object.fromEntries(SETS.map((s) => [s, []]))]));
   for (const p of await listAll("marks/")) {
     const [, slug, set, id] = p.split("/");
-    if (!marks[slug]?.[set] || (PRIVATE_SETS.includes(set) && slug !== me.slug)) continue;
+    if (!marks[slug]?.[set]) continue;
     marks[slug][set].push(unb64(id));
   }
   return json(request, { me: { slug: me.slug, name: me.name }, people, marks });
@@ -113,8 +113,12 @@ export async function POST(request) {
   if (!me) return denied(request);
   const { set, id, on } = body;
   if (!SETS.includes(set) || typeof id !== "string" || id.length > 200) return json(request, { error: "bad request" }, 400);
-  const pathname = `marks/${me.slug}/${set}/${b64(id)}`;
-  if (on) await put(pathname, "1", { access: "private", allowOverwrite: true, addRandomSuffix: false });
-  else await del(pathname).catch(() => {});
+  const pathOf = (slug) => `marks/${slug}/${set}/${b64(id)}`;
+  if (on) await put(pathOf(me.slug), "1", { access: "private", allowOverwrite: true, addRandomSuffix: false });
+  else {
+    // Unmarking clears the listing from the shared list: everyone's mark on it goes.
+    const slugs = (await listAll("users/")).map((p) => p.split("/")[1]);
+    await del(slugs.map(pathOf)).catch(() => {});
+  }
   return json(request, { ok: true });
 }
